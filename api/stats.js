@@ -5,14 +5,16 @@
 // DayAgg: { ms, words, sessions, pauses, rewinds, skips, completed,
 //           bySource: { type: { ms, words, completed } } }
 import { getDoc, setDoc } from './_lib/store.js';
-import { gate } from './_lib/auth.js';
+import { gate, keyFor } from './_lib/auth.js';
 
 const KEY = 'rr:stats';
 const DAY_CAP = 400;
 
 export default async function handler(req, res) {
-  if (!gate(req, res)) return;
-  const stats = await getDoc(KEY, { days: {} });
+  const uid = gate(req, res);
+  if (!uid) return;
+  const KEY_U = keyFor(KEY, uid);
+  const stats = await getDoc(KEY_U, { days: {} });
 
   if (req.method === 'GET') {
     return res.status(200).json(stats);
@@ -46,7 +48,7 @@ export default async function handler(req, res) {
 
     const keys = Object.keys(stats.days).sort();
     while (keys.length > DAY_CAP) delete stats.days[keys.shift()];
-    await setDoc(KEY, stats);
+    await setDoc(KEY_U, stats);
     return res.status(200).json({ ok: true });
   }
 

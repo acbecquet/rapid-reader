@@ -94,6 +94,36 @@ an agent session — it uses your `GEMINI_API_KEY`.
 4. Redeploy. Open the app and visit `https://your-app.vercel.app/?token=YOURTOKEN`
    once per device to self-configure.
 
+## Multi-user: Google sign-in (optional)
+
+Without this, the app is single-user via your token. With it, anyone you
+invite signs in with Google and gets a fully isolated queue (their items,
+stats, and live slot live under their own keys — nobody sees anyone else's
+data, and no passwords are ever handled).
+
+One-time setup (~15 min):
+
+1. [console.cloud.google.com](https://console.cloud.google.com) → create a
+   project → **APIs & Services → OAuth consent screen** → External → fill in
+   the app name and your email → save (no scopes needed beyond the defaults).
+   Publish the app (or add testers' emails while in testing mode).
+2. **Credentials → Create credentials → OAuth client ID → Web application.**
+   Add your app origins under **Authorized JavaScript origins**:
+   `https://your-app.vercel.app` (plus `http://localhost:3000` for dev and
+   any Vercel preview origin you test on).
+3. Copy the client ID into a `GOOGLE_CLIENT_ID` env var on Vercel, and add:
+   - `OWNER_EMAIL` — your Gmail; signing in with it maps to your existing data.
+   - `ALLOWED_EMAILS` *(optional)* — comma-separated guest list. Unset = anyone
+     with the URL and a Google account can use it.
+4. Redeploy. The panel now shows **Sign in with Google** to anyone without a
+   token. Your old token keeps working for your extension/MCP.
+
+Inviting someone: send them your URL. They sign in — that's the whole setup.
+If they also want desktop highlight capture or the MCP, they copy their
+device token from **⚙ → Copy device token** into the extension options /
+MCP env. The panel, phone share, and paste flows need nothing but the
+sign-in. Extension and MCP are strictly optional extras.
+
 ## Install the capture extension (desktop)
 
 1. `chrome://extensions` → enable Developer mode → **Load unpacked** → select
@@ -125,20 +155,21 @@ select text in any app → **Share → Rapid Reader** (Android; on iOS use the
 
 ## Setting someone else up (e.g. macOS)
 
-Rapid Reader is single-user — each person runs their own free stack
-(their data never touches yours):
+With Google sign-in configured (above), a friend needs zero infrastructure:
 
-1. Fork this repo (or use the GitHub template button) into their account.
-2. [vercel.com/new](https://vercel.com/new) → import the fork → preset
-   **Other** → Deploy. Then Storage → **Upstash Redis** (free) → connect,
-   add `RAPID_READER_TOKEN` (+ optional `GEMINI_API_KEY`) in env vars,
-   and redeploy.
-3. Visit `https://their-app.vercel.app/?token=THEIRTOKEN` once per device.
-4. Extension (Chrome/Arc/Edge on macOS): `git clone` the fork →
-   `chrome://extensions` → Developer mode → Load unpacked → `extension/`
-   folder → set URL + token in options.
-5. PWA: Chrome menu → Cast, Save & Share → Install; or Safari → Share →
-   Add to Dock (macOS Sonoma+).
+1. Send them your app URL. They open it and **Sign in with Google** — they
+   now have their own private queue on your deployment.
+2. App-like window: Chrome → ⋮ → Save and Share → **Install app**; or Safari →
+   Share → **Add to Dock** (macOS Sonoma+). iPhone: **Add to Home Screen**,
+   then capture via Share → Rapid Reader.
+3. *(Optional)* Desktop highlight capture: `git clone` this repo →
+   `chrome://extensions` → Developer mode → **Load unpacked** → `extension/`
+   folder → in options enter your app URL and the token from
+   **⚙ → Copy device token**.
+4. *(Optional)* MCP for Claude Code: see the section above, using their own
+   device token.
+
+They can stop at step 1 and still have the full reading experience.
 
 ## Local development
 

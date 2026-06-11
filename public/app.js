@@ -15,6 +15,7 @@ const DEFAULTS = {
   keepOpen: false, // keep the backlog visible while reading
   transcript: true, // live transcript pane that follows the current word
   token: '',
+  account: null, // { name, email } when signed in with Google
 };
 let settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('rr:settings') || '{}') };
 
@@ -83,10 +84,17 @@ async function refresh() {
   } catch (e) {
     setStatus(
       e.code === 401 || e.code === 503
-        ? 'unauthorized — set access token in ⚙'
+        ? (googleClientId ? 'sign in to sync your queue' : 'unauthorized — set access token in ⚙')
         : 'offline — retrying…',
       true
     );
+    if (e.code === 401 && settings.token && googleClientId) {
+      // stale/revoked token — fall back to the sign-in screen
+      settings.token = '';
+      settings.account = null;
+      saveSettings();
+      renderAuth();
+    }
   }
 }
 
@@ -718,6 +726,8 @@ function fillSettingsForm() {
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
   $('s-token').value = settings.token;
+  $('s-account').hidden = !settings.account;
+  if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
 }
 
 $('settings-btn').onclick = () => { fillSettingsForm(); $('settings').hidden = false; };
@@ -771,6 +781,94 @@ function toast(msg) {
   toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2200);
 }
 
+// ---------- Google sign-in (optional — token entry still works without it) ----------
+let googleClientId = null;
+
+async function initAuth() {
+  try {
+    ({ clientId: googleClientId } = await (await fetch('api/login')).json());
+  } catch {}
+  renderAuth();
+}
+
+function renderAuth() {
+  $('auth').hidden = !googleClientId || !!settings.token;
+  if (!$('auth').hidden) mountGsiButton();
+}
+
+let gsiMounted = false;
+async function mountGsiButton() {
+  if (gsiMounted) return;
+  gsiMounted = true;
+  try {
+    await new Promise((ok, err) => {
+      if (window.google?.accounts) return ok();
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = ok;
+      s.onerror = err;
+      document.head.append(s);
+    });
+    window.google.accounts.id.initialize({
+      client_id: googleClientId,
+      callback: onGoogleCredential,
+    });
+    window.google.accounts.id.renderButton($('gsi-btn'), {
+      theme: 'filled_black', size: 'large', shape: 'pill',
+    });
+  } catch {
+    gsiMounted = false;
+    setStatus('could not load Google sign-in — check connection', true);
+  }
+}
+
+async function onGoogleCredential(resp) {
+  try {
+    const r = await fetch('api/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ credential: resp.credential }),
+    });
+    const data = await r.json();
+    if (!r.ok) return toast(data.error || 'Sign-in failed');
+    settings.token = data.token;
+    settings.account = { name: data.name, email: data.email };
+    saveSettings();
+    fillSettingsForm();
+    renderAuth();
+    knownIds = null;
+    lastRender = '';
+    toast('Signed in as ' + (data.email || data.name));
+    refresh();
+  } catch {
+    toast('Sign-in failed — try again');
+  }
+}
+
+$('s-signout').onclick = () => {
+  settings.token = '';
+  settings.account = null;
+  saveSettings();
+  fillSettingsForm();
+  items = [];
+  knownIds = null;
+  lastRender = '';
+  closeReader();
+  renderList();
+  renderAuth();
+  $('settings').hidden = true;
+  setStatus('signed out', true);
+};
+
+$('s-copytoken').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(settings.token);
+    toast('Token copied — paste it into the extension or MCP setup');
+  } catch {
+    toast('Copy failed — token is in the field below');
+  }
+};
+
 // ---------- share target intake (PWA: select → share → Rapid Reader) ----------
 async function intakeShared() {
   const p = new URLSearchParams(location.search);
@@ -800,6 +898,7 @@ async function intakeShared() {
 }
 applySettings();
 fillSettingsForm();
+initAuth();
 // /?item=<id> (e.g. MCP playbackUrl) deep-links straight into an item.
 const wantedItem = new URLSearchParams(location.search).get('item');
 intakeShared().then(refresh).then(() => {

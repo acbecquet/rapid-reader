@@ -9,7 +9,7 @@
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 import crypto from 'node:crypto';
 import { getDoc, getDocs, setDoc } from './_lib/store.js';
-import { gate } from './_lib/auth.js';
+import { gate, keyFor } from './_lib/auth.js';
 import { makeTitle, makeSummary } from './_lib/title.js';
 
 const KEY = 'rr:items';
@@ -26,15 +26,17 @@ function defaultSourceType(url) {
 }
 
 export default async function handler(req, res) {
-  if (!gate(req, res)) return;
+  const uid = gate(req, res);
+  if (!uid) return;
+  const KEY_U = keyFor(KEY, uid);
   const body = req.body || {};
 
   if (req.method === 'GET') {
     // one MGET: backlog + the ephemeral live-highlight slot (see api/live.js)
-    const [items, live] = await getDocs([KEY, 'rr:live'], [[], null]);
+    const [items, live] = await getDocs([KEY_U, keyFor('rr:live', uid)], [[], null]);
     return res.status(200).json({ items, live });
   }
-  const items = await getDoc(KEY, []);
+  const items = await getDoc(KEY_U, []);
 
   if (req.method === 'POST') {
     const text = (body.text || '').trim();
@@ -56,7 +58,7 @@ export default async function handler(req, res) {
       archivedAt: null,
       summary: null,
     };
-    await setDoc(KEY, [item, ...items].slice(0, CAP));
+    await setDoc(KEY_U, [item, ...items].slice(0, CAP));
     return res.status(201).json({ item });
   }
 
@@ -75,14 +77,14 @@ export default async function handler(req, res) {
     if ('readAt' in body) item.readAt = body.readAt;
     if ('progress' in body) item.progress = Math.max(0, Number(body.progress) || 0);
     if ('archivedAt' in body) item.archivedAt = body.archivedAt;
-    await setDoc(KEY, items);
+    await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }
 
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
-    await setDoc(KEY, items.filter((it) => !ids.includes(it.id)));
+    await setDoc(KEY_U, items.filter((it) => !ids.includes(it.id)));
     return res.status(200).json({ ok: true });
   }
 

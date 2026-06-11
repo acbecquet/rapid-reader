@@ -31,6 +31,10 @@
       <p>Highlight text anywhere with the extension, share to this app on
         your phone, or press <kbd>+</kbd> to paste. Select an item to start
         reading.</p>
+      <div id="auth" hidden>
+        <p>Sign in to get your own private reading queue:</p>
+        <div id="gsi-btn"></div>
+      </div>
     </div>
     <div id="reader" hidden>
       <div id="item-title"></div>
@@ -89,7 +93,14 @@
       </label>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play new captures</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
-      <label>Access token <input id="s-token" type="password" placeholder="RAPID_READER_TOKEN" autocomplete="off"></label>
+      <div id="s-account" hidden>
+        <div class="acct-line">Signed in as <span id="s-email"></span></div>
+        <div class="row">
+          <button id="s-copytoken" class="btn ghost">Copy device token</button>
+          <button id="s-signout" class="btn ghost">Sign out</button>
+        </div>
+      </div>
+      <label id="s-token-row">Access token <input id="s-token" type="password" placeholder="paste token" autocomplete="off"></label>
       <div class="row right"><button id="s-close" class="btn">Done</button></div>
     </div>
   </div>

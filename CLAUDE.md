@@ -50,9 +50,12 @@ optional decoration; apply them to every change.
 - `rsvp.js` and `parse.js` stay pure (no DOM, no fetch) so they stay testable in Node.
 - Item schema: `{ id, text, title, url, source, sourceType, createdAt, readAt,
   progress, archivedAt, summary }`.
-- Storage is JSON documents in Redis (`rr:items` newest-first capped,
-  `rr:stats` daily aggregates). This is a single-user app; don't add
-  multi-tenancy machinery.
+- Storage is JSON documents in Redis, namespaced per user via
+  `keyFor(base, uid)`: `rr:items[:uid]` newest-first capped, `rr:stats[:uid]`
+  daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless
+  HMAC session token (Google sign-in via `api/login.js`, or the owner/dev
+  token → uid `owner` on the legacy un-namespaced keys). No passwords, no
+  server-side sessions, no billing machinery.
 - Never RSVP raw code or raw diffs: parse them out or summarize them into
   language first. Raw source stays accessible.
 - Stats stay aggregate-only: no captured text in `rr:stats`, ever.

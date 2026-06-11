@@ -6,8 +6,14 @@ import { extname, join, normalize } from 'node:path';
 import handler from './api/items.js';
 import statsHandler from './api/stats.js';
 import liveHandler from './api/live.js';
+import loginHandler from './api/login.js';
 
-const API = { '/api/items': handler, '/api/stats': statsHandler, '/api/live': liveHandler };
+const API = {
+  '/api/items': handler,
+  '/api/stats': statsHandler,
+  '/api/live': liveHandler,
+  '/api/login': loginHandler,
+};
 const PORT = process.env.PORT || 3000;
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',

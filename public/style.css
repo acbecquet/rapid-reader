@@ -152,6 +152,11 @@ body {
   border-radius: 3px;
   padding: 0 5px;
 }
+#auth { margin-top: 18px; }
+#gsi-btn { display: flex; justify-content: center; min-height: 40px; }
+#s-account { margin: 9px 0; font-size: 11px; color: var(--dim); }
+#s-account .acct-line { margin-bottom: 6px; }
+#s-account #s-email { color: var(--fg); }
 #reader { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 #reader[hidden] { display: none; }
 #secnav {
