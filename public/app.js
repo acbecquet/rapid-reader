@@ -378,6 +378,17 @@ async function intakeShared() {
 }
 
 // ---------- boot ----------
+// Opening the app as /?token=… stores the token (one-time device setup
+// without typing it) and strips it from the URL.
+{
+  const p = new URLSearchParams(location.search);
+  if (p.get('token')) {
+    settings.token = p.get('token');
+    saveSettings();
+    p.delete('token');
+    history.replaceState(null, '', location.pathname + (p.size ? '?' + p : ''));
+  }
+}
 applySettings();
 fillSettingsForm();
 intakeShared().then(refresh);
