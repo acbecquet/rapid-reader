@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101014">
+  <title>Rapid Reader</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header class="side-head">
+      <span class="brand">Rapid Reader</span>
+      <button id="add-btn" class="icon-btn" title="Add text manually">+</button>
+      <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+    </header>
+    <div id="list"></div>
+    <div id="status">connecting…</div>
+  </aside>
+
+  <main id="main">
+    <button id="side-toggle" class="icon-btn" title="Backlog">☰</button>
+    <div id="empty">
+      <p><strong>Rapid Reader</strong></p>
+      <p>Highlight text anywhere with the extension, share to this app on
+        your phone, or press <kbd>+</kbd> to paste. Select an item to start
+        reading.</p>
+    </div>
+    <div id="reader" hidden>
+      <div id="item-title"></div>
+      <div id="stage" title="Tap to play/pause">
+        <div class="guide top"></div>
+        <div id="word"><span id="pre"></span><span id="pivot"></span><span id="post"></span></div>
+        <div class="guide bottom"></div>
+        <div id="paused-hint" hidden>paused — Space or tap</div>
+      </div>
+      <div id="progress"><div id="bar"></div></div>
+      <div id="hud">
+        <button id="restart" class="icon-btn" title="Restart">⟲</button>
+        <button id="back" class="icon-btn" title="Previous sentence (←)">⟨</button>
+        <button id="play" class="icon-btn big" title="Play/pause (Space)">▶</button>
+        <button id="fwd" class="icon-btn" title="Next sentence (→)">⟩</button>
+        <span id="wpm-now"></span>
+        <span id="time-left"></span>
+      </div>
+    </div>
+  </main>
+
+  <div id="settings" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Settings</h2>
+      <label>Font
+        <select id="s-font">
+          <option value="system-ui, sans-serif">System</option>
+          <option value="Georgia, 'Times New Roman', serif">Serif</option>
+          <option value="'SF Mono', Consolas, monospace">Monospace</option>
+        </select>
+      </label>
+      <label>Font size <span id="s-size-val"></span>
+        <input id="s-size" type="range" min="18" max="80" step="1">
+      </label>
+      <div class="row">
+        <label>Text <input id="s-color" type="color"></label>
+        <label>Background <input id="s-bg" type="color"></label>
+      </div>
+      <label>Target WPM <span id="s-wpm-val"></span>
+        <input id="s-wpm" type="range" min="100" max="1000" step="10">
+      </label>
+      <label>Mode
+        <select id="s-mode">
+          <option value="standard">Standard — constant WPM</option>
+          <option value="build">Build — 80 WPM, +20 every 15s up to target</option>
+        </select>
+      </label>
+      <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play new captures</label>
+      <label>Access token <input id="s-token" type="password" placeholder="RAPID_READER_TOKEN" autocomplete="off"></label>
+      <div class="row right"><button id="s-close" class="btn">Done</button></div>
+    </div>
+  </div>
+
+  <div id="add" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Add text</h2>
+      <textarea id="add-text" rows="8" placeholder="Paste text to read…"></textarea>
+      <div class="row right">
+        <button id="add-cancel" class="btn ghost">Cancel</button>
+        <button id="add-save" class="btn">Add to backlog</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
