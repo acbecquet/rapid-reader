@@ -44,7 +44,7 @@
         <button id="back" class="icon-btn" title="Previous sentence (←)">⟨</button>
         <button id="play" class="icon-btn big" title="Play/pause (Space)">▶</button>
         <button id="fwd" class="icon-btn" title="Next sentence (→)">⟩</button>
-        <span id="wpm-now"></span>
+        <span id="wpm-now" title="Tap to set target WPM"></span>
         <span id="time-left"></span>
       </div>
     </div>
@@ -67,7 +67,8 @@
         <label>Text <input id="s-color" type="color"></label>
         <label>Background <input id="s-bg" type="color"></label>
       </div>
-      <label>Target WPM <span id="s-wpm-val"></span>
+      <label>Target WPM
+        <input id="s-wpm-num" type="number" min="100" max="1000" step="10" class="num">
         <input id="s-wpm" type="range" min="100" max="1000" step="10">
       </label>
       <label>Mode

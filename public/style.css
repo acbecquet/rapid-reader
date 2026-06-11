@@ -198,7 +198,18 @@ body {
   color: var(--dim);
   font-size: 11px;
 }
-#wpm-now { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; }
+#wpm-now { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
+#wpm-now:hover { color: var(--fg); }
+#wpm-now input {
+  width: 58px;
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  padding: 2px 4px;
+  font: inherit;
+  text-align: center;
+}
 #time-left { min-width: 48px; text-align: center; font-variant-numeric: tabular-nums; }
 
 /* ---------- shared controls ---------- */
@@ -251,7 +262,7 @@ body {
 .modal-card h2 { margin: 0 0 10px; font-size: 13px; }
 .modal-card label { display: block; margin: 9px 0; color: var(--dim); font-size: 11px; }
 .modal-card label.check { display: flex; align-items: center; gap: 6px; }
-.modal-card select, .modal-card input[type=password], .modal-card textarea {
+.modal-card select, .modal-card input[type=password], .modal-card textarea, .modal-card input.num {
   display: block;
   width: 100%;
   margin-top: 3px;
@@ -262,6 +273,7 @@ body {
   padding: 6px 8px;
   font: inherit;
 }
+.modal-card input.num { display: inline-block; width: 70px; margin-left: 6px; padding: 2px 6px; }
 .modal-card input[type=range] { display: block; width: 100%; margin-top: 4px; accent-color: var(--accent); }
 .modal-card input[type=color] {
   width: 40px; height: 24px;
