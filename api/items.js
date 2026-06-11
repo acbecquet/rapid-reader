@@ -4,6 +4,8 @@
 // PATCH  /api/items            { id, title? readAt? } → { item }
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 // Auth: Authorization: Bearer <RAPID_READER_TOKEN> (or ?token=…).
+// PUBLIC_DEMO=1 lets tokenless visitors use a shared sandbox queue
+// (rr:items:demo); the owner's token still maps to the private backlog.
 import crypto from 'node:crypto';
 import { getItems, setItems, hasRedis } from './_lib/store.js';
 import { makeTitle } from './_lib/title.js';
@@ -22,15 +24,18 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'content-type,authorization');
   if (req.method === 'OPTIONS') return res.status(204).end();
 
-  if (process.env.RAPID_READER_TOKEN === undefined && hasRedis()) {
+  const demo = process.env.PUBLIC_DEMO === '1';
+  if (process.env.RAPID_READER_TOKEN === undefined && hasRedis() && !demo) {
     return res.status(503).json({ error: 'Set the RAPID_READER_TOKEN env var' });
   }
-  if (!authorized(req)) return res.status(401).json({ error: 'bad or missing token' });
+  const auth = authorized(req);
+  if (!auth && !demo) return res.status(401).json({ error: 'bad or missing token' });
+  const key = auth ? undefined : 'rr:items:demo';
 
   const body = req.body || {};
 
   if (req.method === 'GET') {
-    return res.status(200).json({ items: await getItems() });
+    return res.status(200).json({ items: await getItems(key) });
   }
 
   if (req.method === 'POST') {
@@ -47,24 +52,24 @@ export default async function handler(req, res) {
       createdAt: Date.now(),
       readAt: null,
     };
-    await setItems([item, ...await getItems()]);
+    await setItems([item, ...await getItems(key)], key);
     return res.status(201).json({ item });
   }
 
   if (req.method === 'PATCH') {
-    const items = await getItems();
+    const items = await getItems(key);
     const item = items.find((it) => it.id === body.id);
     if (!item) return res.status(404).json({ error: 'not found' });
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;
-    await setItems(items);
+    await setItems(items, key);
     return res.status(200).json({ item });
   }
 
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
-    await setItems((await getItems()).filter((it) => !ids.includes(it.id)));
+    await setItems((await getItems(key)).filter((it) => !ids.includes(it.id)), key);
     return res.status(200).json({ ok: true });
   }
 

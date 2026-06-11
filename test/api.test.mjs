@@ -80,3 +80,50 @@ test('requires token when RAPID_READER_TOKEN is set', async () => {
     delete process.env.RAPID_READER_TOKEN;
   }
 });
+
+test('PUBLIC_DEMO: tokenless visitors get a shared sandbox, owner data stays private', async () => {
+  process.env.RAPID_READER_TOKEN = 'secret';
+  process.env.PUBLIC_DEMO = '1';
+  const asOwner = (method, extra = {}) => new Promise((resolve) => {
+    const req = { method, headers: { authorization: 'Bearer secret' }, body: extra.body || {}, query: extra.query || {} };
+    const res = {
+      setHeader() {},
+      status(c) { this.code = c; return this; },
+      json(o) { resolve({ code: this.code, body: o }); },
+    };
+    handler(req, res);
+  });
+  try {
+    // owner adds a private item
+    let r = await asOwner('POST', { body: { text: 'Owner private item' } });
+    assert.equal(r.code, 201);
+
+    // tokenless visitor: allowed, sees an empty sandbox (not owner data)
+    r = await call('GET');
+    assert.equal(r.code, 200);
+    assert.deepEqual(r.body.items, []);
+
+    // visitor adds to the sandbox; owner does not see it
+    r = await call('POST', { body: { text: 'Demo visitor item' } });
+    assert.equal(r.code, 201);
+    r = await call('GET');
+    assert.equal(r.body.items[0].text, 'Demo visitor item');
+    r = await asOwner('GET');
+    assert.equal(r.body.items.length, 1);
+    assert.equal(r.body.items[0].text, 'Owner private item');
+
+    // cleanup both stores
+    r = await call('GET');
+    await call('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
+    r = await asOwner('GET');
+    await asOwner('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
+
+    // with PUBLIC_DEMO off again, tokenless is rejected
+    delete process.env.PUBLIC_DEMO;
+    r = await call('GET');
+    assert.equal(r.code, 401);
+  } finally {
+    delete process.env.PUBLIC_DEMO;
+    delete process.env.RAPID_READER_TOKEN;
+  }
+});
