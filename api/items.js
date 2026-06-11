@@ -4,8 +4,8 @@
 // PATCH  /api/items            { id, title? readAt? } → { item }
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 // Auth: Authorization: Bearer <RAPID_READER_TOKEN> (or ?token=…).
-// PUBLIC_DEMO=1 lets tokenless visitors use a shared sandbox queue
-// (rr:items:demo); the owner's token still maps to the private backlog.
+// PUBLIC_DEMO=1 lets tokenless visitors use the app with no entry at all —
+// they share the same queue as the dev token (family/demo phase).
 import crypto from 'node:crypto';
 import { getItems, setItems, hasRedis } from './_lib/store.js';
 import { makeTitle } from './_lib/title.js';
@@ -30,12 +30,11 @@ export default async function handler(req, res) {
   }
   const auth = authorized(req);
   if (!auth && !demo) return res.status(401).json({ error: 'bad or missing token' });
-  const key = auth ? undefined : 'rr:items:demo';
 
   const body = req.body || {};
 
   if (req.method === 'GET') {
-    return res.status(200).json({ items: await getItems(key) });
+    return res.status(200).json({ items: await getItems() });
   }
 
   if (req.method === 'POST') {
@@ -52,24 +51,24 @@ export default async function handler(req, res) {
       createdAt: Date.now(),
       readAt: null,
     };
-    await setItems([item, ...await getItems(key)], key);
+    await setItems([item, ...await getItems()]);
     return res.status(201).json({ item });
   }
 
   if (req.method === 'PATCH') {
-    const items = await getItems(key);
+    const items = await getItems();
     const item = items.find((it) => it.id === body.id);
     if (!item) return res.status(404).json({ error: 'not found' });
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;
-    await setItems(items, key);
+    await setItems(items);
     return res.status(200).json({ item });
   }
 
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
-    await setItems((await getItems(key)).filter((it) => !ids.includes(it.id)), key);
+    await setItems((await getItems()).filter((it) => !ids.includes(it.id)));
     return res.status(200).json({ ok: true });
   }
 

@@ -81,7 +81,7 @@ test('requires token when RAPID_READER_TOKEN is set', async () => {
   }
 });
 
-test('PUBLIC_DEMO: tokenless visitors get a shared sandbox, owner data stays private', async () => {
+test('PUBLIC_DEMO: tokenless visitors share the same queue as the dev token', async () => {
   process.env.RAPID_READER_TOKEN = 'secret';
   process.env.PUBLIC_DEMO = '1';
   const asOwner = (method, extra = {}) => new Promise((resolve) => {
@@ -94,28 +94,21 @@ test('PUBLIC_DEMO: tokenless visitors get a shared sandbox, owner data stays pri
     handler(req, res);
   });
   try {
-    // owner adds a private item
-    let r = await asOwner('POST', { body: { text: 'Owner private item' } });
+    // dev-token user adds an item; tokenless visitor sees the same queue
+    let r = await asOwner('POST', { body: { text: 'Shared queue item' } });
     assert.equal(r.code, 201);
-
-    // tokenless visitor: allowed, sees an empty sandbox (not owner data)
     r = await call('GET');
     assert.equal(r.code, 200);
-    assert.deepEqual(r.body.items, []);
+    assert.equal(r.body.items[0].text, 'Shared queue item');
 
-    // visitor adds to the sandbox; owner does not see it
-    r = await call('POST', { body: { text: 'Demo visitor item' } });
+    // visitor adds; dev-token user sees it too
+    r = await call('POST', { body: { text: 'Visitor item' } });
     assert.equal(r.code, 201);
-    r = await call('GET');
-    assert.equal(r.body.items[0].text, 'Demo visitor item');
     r = await asOwner('GET');
-    assert.equal(r.body.items.length, 1);
-    assert.equal(r.body.items[0].text, 'Owner private item');
+    assert.equal(r.body.items.length, 2);
+    assert.equal(r.body.items[0].text, 'Visitor item');
 
-    // cleanup both stores
-    r = await call('GET');
-    await call('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
-    r = await asOwner('GET');
+    // cleanup
     await asOwner('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
 
     // with PUBLIC_DEMO off again, tokenless is rejected
