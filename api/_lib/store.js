@@ -28,6 +28,13 @@ export async function getDoc(key, fallback) {
   return (await (await redis()).get(key)) ?? fallback;
 }
 
+// Several docs in one Redis command — keeps the panel's poll at 1 command.
+export async function getDocs(keys, fallbacks) {
+  if (!hasRedis()) return keys.map((k, i) => (memory.has(k) ? memory.get(k) : fallbacks[i]));
+  const vals = await (await redis()).mget(...keys);
+  return vals.map((v, i) => v ?? fallbacks[i]);
+}
+
 export async function setDoc(key, value) {
   if (!hasRedis()) {
     memory.set(key, value);

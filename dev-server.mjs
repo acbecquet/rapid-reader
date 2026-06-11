@@ -5,8 +5,9 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import handler from './api/items.js';
 import statsHandler from './api/stats.js';
+import liveHandler from './api/live.js';
 
-const API = { '/api/items': handler, '/api/stats': statsHandler };
+const API = { '/api/items': handler, '/api/stats': statsHandler, '/api/live': liveHandler };
 const PORT = process.env.PORT || 3000;
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',

@@ -15,7 +15,9 @@ captures get summarized into review notes first.
 
 1. **Capture** — highlight text anywhere (browser extension), share from your
    phone (PWA), paste manually, or let your coding agent push items directly
-   (MCP server).
+   (MCP server). **Live mode** mirrors every selection straight into the
+   reader, ready to play, without saving anything — a **＋ keep** chip adds
+   it to the backlog only if you want it.
 2. **Organize** — items land in a synced backlog with short LLM-generated
    titles, source types (`claude code`, `codex`, `web`, …), unread/reviewed/
    archived states, and filters.
@@ -98,8 +100,12 @@ an agent session — it uses your `GEMINI_API_KEY`.
    the `extension/` folder of this repo.
 2. Right-click the extension icon → **Options** → enter your Vercel URL and
    token → **Save & test**.
-3. Highlight text on any page → click **▸ RSVP** (or enable **instant mode**
-   to send every selection automatically).
+3. Pick a selection behavior in options:
+   - **Button** — highlight, then click the **▸ RSVP** button to send to the backlog.
+   - **Instant** — every selection goes straight to the backlog.
+   - **Live** — every selection appears in the reader immediately, paused and
+     ready to play (nothing is saved; the **＋ keep** chip in the reader adds
+     it to the backlog). The ▸ button stays available for deliberate saves.
 
 ## Phone
 
@@ -116,6 +122,23 @@ select text in any app → **Share → Rapid Reader** (Android; on iOS use the
 | `[` / `]` | previous / next section |
 | `↑` / `↓` | target WPM ± 10 (or tap the WPM value to type) |
 | `Esc` | pause and open the backlog |
+
+## Setting someone else up (e.g. macOS)
+
+Rapid Reader is single-user — each person runs their own free stack
+(their data never touches yours):
+
+1. Fork this repo (or use the GitHub template button) into their account.
+2. [vercel.com/new](https://vercel.com/new) → import the fork → preset
+   **Other** → Deploy. Then Storage → **Upstash Redis** (free) → connect,
+   add `RAPID_READER_TOKEN` (+ optional `GEMINI_API_KEY`) in env vars,
+   and redeploy.
+3. Visit `https://their-app.vercel.app/?token=THEIRTOKEN` once per device.
+4. Extension (Chrome/Arc/Edge on macOS): `git clone` the fork →
+   `chrome://extensions` → Developer mode → Load unpacked → `extension/`
+   folder → set URL + token in options.
+5. PWA: Chrome menu → Cast, Save & Share → Install; or Safari → Share →
+   Add to Dock (macOS Sonoma+).
 
 ## Local development
 

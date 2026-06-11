@@ -20,10 +20,15 @@ function selectedText() {
 function maybeOffer() {
   const text = selectedText();
   if (text.split(/\s+/).length < 3) return removeBtn(); // ignore stray selections
-  chrome.storage.sync.get({ instant: false }, ({ instant }) => {
-    if (instant) {
+  chrome.storage.sync.get({ instant: false, mode: '' }, ({ instant, mode }) => {
+    mode = mode || (instant ? 'instant' : 'button'); // migrate old setting
+    if (mode === 'instant') {
       send(text);
       window.getSelection().removeAllRanges();
+    } else if (mode === 'live') {
+      // mirror to the reader's ephemeral live slot; button still offers a save
+      chrome.runtime.sendMessage({ type: 'live', text, url: location.href });
+      showBtn(text);
     } else {
       showBtn(text);
     }

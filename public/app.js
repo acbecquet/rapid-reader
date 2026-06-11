@@ -68,7 +68,7 @@ function setStatus(msg, err) {
 
 async function refresh() {
   try {
-    const { items: fresh } = await api('GET', 'items');
+    const { items: fresh, live } = await api('GET', 'items');
     const newest = knownIds && fresh.find((it) => !knownIds.has(it.id) && !it.readAt);
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
@@ -77,6 +77,8 @@ async function refresh() {
     if (newest && settings.autoplay && (!cur || !cur.playing)) {
       openItem(newest);
       toast('New capture — playing');
+    } else {
+      maybeOpenLive(live);
     }
   } catch (e) {
     setStatus(
@@ -370,7 +372,7 @@ function finish() {
 }
 
 async function markRead(item) {
-  if (item.readAt) return;
+  if (item.live || item.readAt) return;
   item.readAt = Date.now();
   item.progress = 0;
   renderList();
@@ -381,7 +383,7 @@ function saveProgress() {
   if (!cur || cur.done) return;
   const it = cur.item;
   // progress only tracks the original-text stream; summaries are short
-  if (cur.fromSummary || cur.i < 5 || it.progress === cur.i) return;
+  if (it.live || cur.fromSummary || cur.i < 5 || it.progress === cur.i) return;
   it.progress = cur.i;
   api('PATCH', 'items', { body: { id: it.id, progress: cur.i }, keepalive: true }).catch(() => {});
 }
@@ -402,8 +404,45 @@ function flushSession() {
   sess = null;
 }
 
+// ---------- live highlight (ephemeral — never in the backlog) ----------
+let liveSeen = 0;
+
+function maybeOpenLive(live) {
+  if (!live?.ts || live.ts === liveSeen || !live.text) return;
+  if (Date.now() - live.ts > 10 * 60000) { liveSeen = live.ts; return; } // stale
+  liveSeen = live.ts;
+  if (cur?.playing) return; // never yank an active read
+  let source = '';
+  try { source = new URL(live.url).hostname; } catch {}
+  openItem({
+    id: '__live__',
+    live: true,
+    title: '⚡ ' + (source || 'live highlight'),
+    text: live.text,
+    url: live.url || '',
+    sourceType: 'web',
+    progress: 0,
+    readAt: null,
+    summary: null,
+  }, { start: false }); // ready to read, not auto-playing
+}
+
+$('keep-btn').onclick = async () => {
+  if (!cur?.item.live) return;
+  $('keep-btn').hidden = true;
+  try {
+    await api('POST', 'items', { body: { text: cur.item.text, url: cur.item.url } });
+    api('DELETE', 'live').catch(() => {}); // slot consumed
+    toast('Kept — added to backlog');
+    refresh();
+  } catch {
+    $('keep-btn').hidden = false;
+    toast('Could not save — check token');
+  }
+};
+
 // ---------- open / close ----------
-function openItem(item) {
+function openItem(item, { start = true } = {}) {
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
@@ -425,12 +464,19 @@ function openItem(item) {
   $('empty').hidden = true;
   $('reader').hidden = false;
   $('item-title').textContent = (fromSummary ? '∑ ' : '') + item.title;
-  $('summarize-btn').hidden = fromSummary || !P.isCodeHeavy(item.text);
+  $('summarize-btn').hidden = fromSummary || item.live || !P.isCodeHeavy(item.text);
+  $('keep-btn').hidden = !item.live;
   buildSectionNav();
   buildTranscript();
   if (!settings.keepOpen) setBacklog(false);
   renderList();
-  play();
+  if (start) {
+    play();
+  } else {
+    showToken();
+    $('play').textContent = '▶';
+    $('paused-hint').hidden = false;
+  }
 }
 
 function closeReader() {

@@ -14,7 +14,7 @@
     h1 { font-size: 14px; margin: 0 0 12px; }
     label { display: block; margin: 10px 0; color: #7c7c88; font-size: 12px; }
     label.check { display: flex; align-items: center; gap: 7px; color: #d6d6dc; }
-    input[type=url], input[type=password] {
+    input[type=url], input[type=password], select {
       display: block;
       width: 100%;
       box-sizing: border-box;
@@ -49,9 +49,12 @@
   <label>Access token
     <input id="token" type="password" placeholder="RAPID_READER_TOKEN">
   </label>
-  <label class="check">
-    <input id="instant" type="checkbox">
-    Instant mode — send every selection automatically (no button)
+  <label>Selection behavior
+    <select id="mode">
+      <option value="button">Show a ▸ RSVP button (send manually)</option>
+      <option value="instant">Instant — every selection goes to the backlog</option>
+      <option value="live">Live — every selection previews in the reader (not saved)</option>
+    </select>
   </label>
   <button id="save">Save &amp; test</button>
   <div id="msg"></div>

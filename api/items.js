@@ -8,7 +8,7 @@
 //        { id, summary } → store an agent-written summary directly
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 import crypto from 'node:crypto';
-import { getDoc, setDoc } from './_lib/store.js';
+import { getDoc, getDocs, setDoc } from './_lib/store.js';
 import { gate } from './_lib/auth.js';
 import { makeTitle, makeSummary } from './_lib/title.js';
 
@@ -28,11 +28,13 @@ function defaultSourceType(url) {
 export default async function handler(req, res) {
   if (!gate(req, res)) return;
   const body = req.body || {};
-  const items = await getDoc(KEY, []);
 
   if (req.method === 'GET') {
-    return res.status(200).json({ items });
+    // one MGET: backlog + the ephemeral live-highlight slot (see api/live.js)
+    const [items, live] = await getDocs([KEY, 'rr:live'], [[], null]);
+    return res.status(200).json({ items, live });
   }
+  const items = await getDoc(KEY, []);
 
   if (req.method === 'POST') {
     const text = (body.text || '').trim();
