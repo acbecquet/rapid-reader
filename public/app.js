@@ -13,6 +13,7 @@ const DEFAULTS = {
   mode: 'standard', // 'standard' | 'build'
   autoplay: true,
   keepOpen: false, // keep the backlog visible while reading
+  transcript: true, // live transcript pane that follows the current word
   token: '',
 };
 let settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('rr:settings') || '{}') };
@@ -229,8 +230,70 @@ function showToken() {
   $('post').textContent = t.w.slice(p + 1);
   $('word').classList.toggle('code', !!t.code);
   syncSectionNav(t.sec);
+  markTranscript();
   updateHud();
 }
+
+// ---------- live transcript ----------
+// The full text, one span per token, following the current word — so you
+// can drop out of RSVP into normal reading (and click any word to jump
+// the player there) without losing your place.
+let nowSpan = null;
+
+function buildTranscript() {
+  const box = $('transcript');
+  box.textContent = '';
+  nowSpan = null;
+  const bySec = cur.sections.map(() => []);
+  cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
+  cur.sections.forEach((sec, idx) => {
+    if (!bySec[idx].length) return;
+    if (sec.type === 'code') {
+      // show the real code here — this is where you read it normally
+      const pre = document.createElement('pre');
+      pre.textContent = sec.raw.replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
+      pre.dataset.i = bySec[idx][0][1];
+      box.append(pre);
+      return;
+    }
+    const para = document.createElement('p');
+    if (sec.type === 'heading') para.className = 'h';
+    for (const [t, i] of bySec[idx]) {
+      const s = document.createElement('span');
+      s.textContent = t.w;
+      s.dataset.i = i;
+      para.append(s, ' ');
+    }
+    box.append(para);
+  });
+  box.onclick = (e) => {
+    const i = e.target.closest('[data-i]')?.dataset.i;
+    if (i !== undefined) seek(Number(i));
+  };
+  applyTranscript();
+}
+
+function applyTranscript() {
+  $('transcript').hidden = !settings.transcript || !cur;
+  $('script-btn').classList.toggle('on', settings.transcript);
+  if (cur) markTranscript();
+}
+
+function markTranscript() {
+  if (!settings.transcript || $('transcript').hidden) return;
+  nowSpan?.classList.remove('now');
+  nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
+  if (nowSpan) {
+    nowSpan.classList.add('now');
+    nowSpan.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+$('script-btn').onclick = () => {
+  settings.transcript = !settings.transcript;
+  saveSettings();
+  applyTranscript();
+};
 
 function updateHud() {
   const wpm = currentWpm();
@@ -364,6 +427,7 @@ function openItem(item) {
   $('item-title').textContent = (fromSummary ? '∑ ' : '') + item.title;
   $('summarize-btn').hidden = fromSummary || !P.isCodeHeavy(item.text);
   buildSectionNav();
+  buildTranscript();
   if (!settings.keepOpen) setBacklog(false);
   renderList();
   play();
@@ -374,6 +438,7 @@ function closeReader() {
   if (cur) saveProgress();
   flushSession();
   cur = null;
+  applyTranscript();
   $('reader').hidden = true;
   $('empty').hidden = false;
   renderList();
@@ -591,6 +656,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === ']') jumpAnchor(1);
   else if (e.key === 'ArrowUp') { e.preventDefault(); bumpWpm(10); }
   else if (e.key === 'ArrowDown') { e.preventDefault(); bumpWpm(-10); }
+  else if (e.key === 't' || e.key === 'T') $('script-btn').click();
 });
 
 // ---------- settings UI ----------

@@ -5,6 +5,7 @@
 // POST   /api/items            { text, url?, title?, sourceType? } → { item }
 // PATCH  /api/items            { id, title?|readAt?|progress?|archivedAt? } → { item }
 //        { id, summarize: true } → Gemini language summary stored on the item
+//        { id, summary } → store an agent-written summary directly
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 import crypto from 'node:crypto';
 import { getDoc, setDoc } from './_lib/store.js';
@@ -64,6 +65,9 @@ export default async function handler(req, res) {
       const summary = await makeSummary(item.text);
       if (!summary) return res.status(502).json({ error: 'summary unavailable — set GEMINI_API_KEY' });
       item.summary = summary;
+    } else if ('summary' in body) {
+      // agent-provided summary (e.g. via MCP — the connected model writes it)
+      item.summary = String(body.summary || '').slice(0, 20000) || null;
     }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;

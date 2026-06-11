@@ -13,6 +13,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import { isCodeHeavy } from '../public/parse.js';
 
 const BASE = (process.env.RAPID_READER_URL || '').replace(/\/+$/, '');
 const TOKEN = process.env.RAPID_READER_TOKEN || '';
@@ -38,7 +39,9 @@ const server = new McpServer({ name: 'rapid-reader', version: '1.0.0' });
 
 server.registerTool('rapid_reader_add_item', {
   description: 'Add a reading item to the Rapid Reader review queue. Send natural-language ' +
-    'content (summaries, plans, explanations, review notes) — not raw code or raw diffs.',
+    'content (summaries, plans, explanations, review notes). If your content is raw code or ' +
+    'a raw diff, write a short plain-language summary of it yourself and send that instead — ' +
+    'Rapid Reader never plays raw code word-by-word.',
   inputSchema: {
     text: z.string().min(1).describe('The text to queue for RSVP review'),
     title: z.string().optional().describe('Short title (generated if omitted)'),
@@ -82,6 +85,44 @@ server.registerTool('rapid_reader_list_backlog', {
       unread: !it.readAt,
       createdAt: new Date(it.createdAt).toISOString(),
     })));
+  } catch (e) { return fail(e); }
+});
+
+server.registerTool('rapid_reader_get_item', {
+  description: 'Fetch one backlog item, including its raw text. Use this to read an item ' +
+    'that needs summarizing (codeHeavy: true means it should get a plain-language summary ' +
+    'via rapid_reader_set_summary before the user reviews it).',
+  inputSchema: { itemId: z.string().describe('The item id') },
+}, async ({ itemId }) => {
+  try {
+    const { items } = await api('GET', 'items');
+    const it = items.find((x) => x.id === itemId);
+    if (!it) return fail(new Error('item not found: ' + itemId));
+    return text({
+      itemId: it.id,
+      title: it.title,
+      sourceType: it.sourceType,
+      url: it.url,
+      codeHeavy: isCodeHeavy(it.text),
+      hasSummary: !!it.summary,
+      text: it.text,
+    });
+  } catch (e) { return fail(e); }
+});
+
+server.registerTool('rapid_reader_set_summary', {
+  description: 'Attach a plain-language summary you wrote to a backlog item. The summary ' +
+    'becomes what the user RSVP-reads (raw text stays accessible). Use markdown headings ' +
+    'and short bullet points: what changed, behavior changes, what to double-check. ' +
+    'No code blocks.',
+  inputSchema: {
+    itemId: z.string().describe('The item id'),
+    summary: z.string().min(1).describe('Your plain-language summary in markdown'),
+  },
+}, async ({ itemId, summary }) => {
+  try {
+    const { item } = await api('PATCH', 'items', { id: itemId, summary });
+    return text({ itemId: item.id, title: item.title, summaryWords: summary.split(/\s+/).length });
   } catch (e) { return fail(e); }
 });
 

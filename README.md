@@ -65,10 +65,17 @@ claude mcp add rapid-reader \
 ```
 
 Tools exposed: `rapid_reader_add_item` (returns a playback deep link),
+`rapid_reader_get_item`, `rapid_reader_set_summary`,
 `rapid_reader_list_backlog`, `rapid_reader_mark_reviewed`,
 `rapid_reader_get_metrics`. Ask your agent to "send a summary of what you did
 to my review queue" and it appears in the panel within seconds — auto-playing
 if you're idle.
+
+Summarization uses the model you're already talking to: the tool
+descriptions steer the connected agent to write plain-language review notes
+itself (`get_item` flags code-heavy items, `set_summary` attaches the notes).
+The in-app **Σ summarize** button is the fallback for items captured outside
+an agent session — it uses your `GEMINI_API_KEY`.
 
 ## Deploy (one-time, ~5 minutes, free)
 

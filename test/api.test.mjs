@@ -84,6 +84,16 @@ test('summarize without GEMINI_API_KEY reports 502', async () => {
   await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
 });
 
+test('agent-written summary can be set and cleared directly', async () => {
+  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
+  const id = r.body.item.id;
+  r = await call('PATCH', { body: { id, summary: '## Notes\n- One change.' } });
+  assert.equal(r.body.item.summary, '## Notes\n- One change.');
+  r = await call('PATCH', { body: { id, summary: '' } });
+  assert.equal(r.body.item.summary, null);
+  await call('DELETE', { query: { id } });
+});
+
 test('rejects empty text and unknown methods', async () => {
   let r = await call('POST', { body: { text: '   ' } });
   assert.equal(r.code, 400);

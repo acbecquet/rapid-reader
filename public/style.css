@@ -231,6 +231,39 @@ body {
   color: var(--dim);
 }
 #progress { height: 3px; background: var(--line); }
+/* ---------- live transcript (follow along / switch to normal reading) ---------- */
+#transcript {
+  flex: 1.4 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+  padding: 10px 16px;
+  font-family: var(--reader-font);
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--dim);
+}
+#transcript[hidden] { display: none; }
+#transcript p { margin: 0 0 10px; }
+#transcript span { cursor: pointer; border-radius: 3px; }
+#transcript span:hover { color: var(--reader-fg); background: #22222b55; }
+#transcript span.now {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--reader-fg);
+}
+#transcript p.h { color: var(--reader-fg); font-weight: 600; margin-top: 14px; }
+#transcript pre {
+  background: color-mix(in srgb, var(--reader-fg) 4%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  cursor: pointer;
+}
+#transcript pre.now { border-color: var(--accent); }
 #bar { height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
 #hud {
   display: flex;
@@ -268,6 +301,7 @@ body {
 }
 .icon-btn:hover { color: var(--fg); background: #22222b; }
 .icon-btn.big { font-size: 18px; color: var(--fg); }
+.icon-btn.on { color: var(--accent); }
 .btn {
   background: var(--accent);
   color: #fff;
