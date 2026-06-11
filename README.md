@@ -72,7 +72,7 @@ tagged `claude code`.
 
 **MCP server** — let the agent push its own summaries. Easiest: download and
 double-click `setup-mcp.cmd` (Windows) or `setup-mcp.command` (macOS) — it
-clones the repo, installs, prompts for your token, and registers the server
+clones the repo, installs, and registers the server
 with Claude Code. Manually:
 
 ```sh

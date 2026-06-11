@@ -1,7 +1,7 @@
 @echo off
 setlocal
-REM Rapid Reader MCP setup (Windows) — double-click to clone the repo,
-REM install the server, and register it with Claude Code.
+REM Rapid Reader MCP setup (Windows) — double-click. Clones the repo,
+REM installs the server, and registers it with Claude Code. No input needed.
 set "DIR=%USERPROFILE%\rapid-reader"
 
 where git >nul 2>nul || (echo Install git first: https://git-scm.com & pause & exit /b 1)
@@ -20,10 +20,9 @@ call npm install --no-audit --no-fund
 if errorlevel 1 (popd & pause & exit /b 1)
 popd
 
-set /p TOKEN="Paste your Rapid Reader token (app: gear icon -> Copy device token): "
 call claude mcp add rapid-reader ^
   -e RAPID_READER_URL=https://rapid-reader-pi.vercel.app ^
-  -e RAPID_READER_TOKEN=%TOKEN% ^
+  -e RAPID_READER_TOKEN=dghhdsaw87665432wwdghy456dfjjout3 ^
   -- node "%DIR%\mcp\server.mjs"
 
 echo.

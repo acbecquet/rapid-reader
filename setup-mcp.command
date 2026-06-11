@@ -1,6 +1,6 @@
 #!/bin/sh
-# Rapid Reader MCP setup (macOS/Linux) — double-click to clone the repo,
-# install the server, and register it with Claude Code.
+# Rapid Reader MCP setup (macOS/Linux) — double-click. Clones the repo,
+# installs the server, and registers it with Claude Code. No input needed.
 set -e
 DIR="$HOME/rapid-reader"
 
@@ -11,11 +11,9 @@ command -v claude >/dev/null || { echo 'Install Claude Code first: npm install -
 if [ -d "$DIR/.git" ]; then git -C "$DIR" pull --ff-only; else git clone https://github.com/acbecquet/rapid-reader "$DIR"; fi
 npm install --prefix "$DIR/mcp" --no-audit --no-fund
 
-printf 'Paste your Rapid Reader token (app: ⚙ → Copy device token): '
-read -r TOKEN
 claude mcp add rapid-reader \
   -e RAPID_READER_URL=https://rapid-reader-pi.vercel.app \
-  -e RAPID_READER_TOKEN="$TOKEN" \
+  -e RAPID_READER_TOKEN=dghhdsaw87665432wwdghy456dfjjout3 \
   -- node "$DIR/mcp/server.mjs"
 
 echo 'Done. Restart Claude Code, then try: "send a summary of what you did to my review queue".'
