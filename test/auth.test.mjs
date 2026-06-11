@@ -130,3 +130,29 @@ test('login reports unconfigured Google cleanly', async () => {
   const r2 = await login(makeIdToken());
   assert.equal(r2.code, 503);
 });
+
+test('PUBLIC_DEMO: tokenless visitors get an isolated demo namespace', async () => {
+  process.env.RAPID_READER_TOKEN = 'dev-secret';
+  process.env.PUBLIC_DEMO = '1';
+  try {
+    // visitor (no token) can use the app against the demo namespace
+    let r = await call(itemsHandler, 'POST', { body: { text: 'Demo visitor item' } });
+    assert.equal(r.code, 201);
+    r = await call(itemsHandler, 'GET');
+    assert.equal(r.body.items[0].text, 'Demo visitor item');
+
+    // the owner's private backlog is untouched
+    r = await itemsAs('dev-secret');
+    assert.deepEqual(r.body.items, []);
+
+    // cleanup, then verify the off-switch
+    const { body } = await call(itemsHandler, 'GET');
+    await call(itemsHandler, 'DELETE', { body: { ids: body.items.map((i) => i.id) } });
+    delete process.env.PUBLIC_DEMO;
+    r = await call(itemsHandler, 'GET');
+    assert.equal(r.code, 401);
+  } finally {
+    delete process.env.PUBLIC_DEMO;
+    delete process.env.RAPID_READER_TOKEN;
+  }
+});
