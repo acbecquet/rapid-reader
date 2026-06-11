@@ -17,9 +17,11 @@
       <span class="brand">Rapid Reader</span>
       <span id="status">connecting…</span>
       <button id="add-btn" class="icon-btn" title="Add text manually">+</button>
+      <button id="stats-btn" class="icon-btn" title="Reading stats">∑</button>
       <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
       <button id="toggle-btn" class="icon-btn" title="Show/hide backlog (Esc)">▾</button>
     </div>
+    <div id="filters" hidden></div>
     <div id="list"></div>
   </header>
 
@@ -29,9 +31,19 @@
       <p>Highlight text anywhere with the extension, share to this app on
         your phone, or press <kbd>+</kbd> to paste. Select an item to start
         reading.</p>
+      <div id="auth" hidden>
+        <p>Sign in to get your own private reading queue:</p>
+        <div id="gsi-btn"></div>
+      </div>
     </div>
     <div id="reader" hidden>
       <div id="item-title"></div>
+      <div id="secnav">
+        <button id="summarize-btn" class="chip accent" hidden title="Turn code/diff into readable review notes">Σ summarize</button>
+        <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
+        <select id="sections" hidden title="Jump to section ([ / ])"></select>
+        <button id="raw-btn" class="chip" title="View raw source">source</button>
+      </div>
       <div id="stage" title="Tap to play/pause">
         <div class="guide top"></div>
         <div id="word"><span id="pre"></span><span id="pivot"></span><span id="post"></span></div>
@@ -81,7 +93,14 @@
       </label>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play new captures</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
-      <label>Access token <input id="s-token" type="password" placeholder="RAPID_READER_TOKEN" autocomplete="off"></label>
+      <div id="s-account" hidden>
+        <div class="acct-line">Signed in as <span id="s-email"></span></div>
+        <div class="row">
+          <button id="s-copytoken" class="btn ghost">Copy device token</button>
+          <button id="s-signout" class="btn ghost">Sign out</button>
+        </div>
+      </div>
+      <label id="s-token-row">Access token <input id="s-token" type="password" placeholder="paste token" autocomplete="off"></label>
       <div class="row right"><button id="s-close" class="btn">Done</button></div>
     </div>
   </div>
@@ -90,10 +109,53 @@
     <div class="modal-card">
       <h2>Add text</h2>
       <textarea id="add-text" rows="8" placeholder="Paste text to read…"></textarea>
+      <label>Source
+        <select id="add-source">
+          <option value="manual">Manual</option>
+          <option value="claude_code">Claude Code</option>
+          <option value="codex">Codex</option>
+          <option value="copilot">Copilot</option>
+          <option value="docs">Docs</option>
+          <option value="email">Email</option>
+          <option value="article">Article</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
       <div class="row right">
         <button id="add-cancel" class="btn ghost">Cancel</button>
         <button id="add-save" class="btn">Add to backlog</button>
       </div>
+    </div>
+  </div>
+
+  <div id="linkmodal" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Save linked page?</h2>
+      <p id="link-url"></p>
+      <div class="row right">
+        <button id="link-cancel" class="btn ghost">Stay here</button>
+        <button id="link-later" class="btn ghost">Save for later</button>
+        <button id="link-read" class="btn">Save &amp; read now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rawview" class="modal" hidden>
+    <div class="modal-card wide">
+      <h2>Raw source</h2>
+      <pre id="raw-text"></pre>
+      <div class="row right">
+        <a id="raw-link" class="btn ghost" target="_blank" rel="noopener" hidden>Open original</a>
+        <button id="raw-close" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="stats" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Reading stats</h2>
+      <div id="stats-body">loading…</div>
+      <div class="row right"><button id="stats-close" class="btn">Done</button></div>
     </div>
   </div>
 

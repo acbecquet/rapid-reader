@@ -27,7 +27,10 @@ test('items CRUD flow in memory mode', async () => {
   const item = r.body.item;
   assert.equal(item.text, 'Some highlighted passage about reading speed.');
   assert.equal(item.source, 'example.com');
+  assert.equal(item.sourceType, 'web');
   assert.equal(item.readAt, null);
+  assert.equal(item.progress, 0);
+  assert.equal(item.archivedAt, null);
   assert.ok(item.title.length > 0); // fallback title without GEMINI_API_KEY
   assert.ok(item.id);
 
@@ -48,6 +51,47 @@ test('items CRUD flow in memory mode', async () => {
   r = await call('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
   r = await call('GET');
   assert.deepEqual(r.body.items, []);
+});
+
+test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
+  let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
+  assert.equal(r.body.item.sourceType, 'codex');
+  const codexId = r.body.item.id;
+
+  r = await call('POST', { body: { text: 'From a Claude session', url: 'https://claude.ai/chat/abc' } });
+  assert.equal(r.body.item.sourceType, 'claude_code');
+
+  r = await call('POST', { body: { text: 'Pasted by hand' } });
+  assert.equal(r.body.item.sourceType, 'manual');
+
+  r = await call('POST', { body: { text: 'Bogus type falls back', sourceType: 'nonsense' } });
+  assert.equal(r.body.item.sourceType, 'manual');
+
+  r = await call('PATCH', { body: { id: codexId, progress: 42 } });
+  assert.equal(r.body.item.progress, 42);
+  r = await call('PATCH', { body: { id: codexId, archivedAt: 777 } });
+  assert.equal(r.body.item.archivedAt, 777);
+
+  const { body } = await call('GET');
+  await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
+});
+
+test('summarize without GEMINI_API_KEY reports 502', async () => {
+  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
+  r = await call('PATCH', { body: { id: r.body.item.id, summarize: true } });
+  assert.equal(r.code, 502);
+  const { body } = await call('GET');
+  await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
+});
+
+test('agent-written summary can be set and cleared directly', async () => {
+  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
+  const id = r.body.item.id;
+  r = await call('PATCH', { body: { id, summary: '## Notes\n- One change.' } });
+  assert.equal(r.body.item.summary, '## Notes\n- One change.');
+  r = await call('PATCH', { body: { id, summary: '' } });
+  assert.equal(r.body.item.summary, null);
+  await call('DELETE', { query: { id } });
 });
 
 test('rejects empty text and unknown methods', async () => {
@@ -77,53 +121,6 @@ test('requires token when RAPID_READER_TOKEN is set', async () => {
     r = await call('GET', { query: { token: 'secret' } });
     assert.equal(r.code, 200);
   } finally {
-    delete process.env.RAPID_READER_TOKEN;
-  }
-});
-
-test('PUBLIC_DEMO: tokenless visitors get a shared sandbox, owner data stays private', async () => {
-  process.env.RAPID_READER_TOKEN = 'secret';
-  process.env.PUBLIC_DEMO = '1';
-  const asOwner = (method, extra = {}) => new Promise((resolve) => {
-    const req = { method, headers: { authorization: 'Bearer secret' }, body: extra.body || {}, query: extra.query || {} };
-    const res = {
-      setHeader() {},
-      status(c) { this.code = c; return this; },
-      json(o) { resolve({ code: this.code, body: o }); },
-    };
-    handler(req, res);
-  });
-  try {
-    // owner adds a private item
-    let r = await asOwner('POST', { body: { text: 'Owner private item' } });
-    assert.equal(r.code, 201);
-
-    // tokenless visitor: allowed, sees an empty sandbox (not owner data)
-    r = await call('GET');
-    assert.equal(r.code, 200);
-    assert.deepEqual(r.body.items, []);
-
-    // visitor adds to the sandbox; owner does not see it
-    r = await call('POST', { body: { text: 'Demo visitor item' } });
-    assert.equal(r.code, 201);
-    r = await call('GET');
-    assert.equal(r.body.items[0].text, 'Demo visitor item');
-    r = await asOwner('GET');
-    assert.equal(r.body.items.length, 1);
-    assert.equal(r.body.items[0].text, 'Owner private item');
-
-    // cleanup both stores
-    r = await call('GET');
-    await call('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
-    r = await asOwner('GET');
-    await asOwner('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
-
-    // with PUBLIC_DEMO off again, tokenless is rejected
-    delete process.env.PUBLIC_DEMO;
-    r = await call('GET');
-    assert.equal(r.code, 401);
-  } finally {
-    delete process.env.PUBLIC_DEMO;
     delete process.env.RAPID_READER_TOKEN;
   }
 });

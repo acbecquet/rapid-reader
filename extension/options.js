@@ -1,16 +1,16 @@
 const $ = (id) => document.getElementById(id);
 
-chrome.storage.sync.get({ server: '', token: '', instant: false }, (cfg) => {
+chrome.storage.sync.get({ server: '', token: '', instant: false, mode: '' }, (cfg) => {
   $('server').value = cfg.server;
   $('token').value = cfg.token;
-  $('instant').checked = cfg.instant;
+  $('mode').value = cfg.mode || (cfg.instant ? 'instant' : 'button');
 });
 
 $('save').onclick = async () => {
   const cfg = {
     server: $('server').value.trim().replace(/\/+$/, ''),
     token: $('token').value.trim(),
-    instant: $('instant').checked,
+    mode: $('mode').value,
   };
   await chrome.storage.sync.set(cfg);
   const msg = $('msg');

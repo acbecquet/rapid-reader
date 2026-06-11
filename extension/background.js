@@ -19,13 +19,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     capture(msg).then(sendResponse);
     return true; // async response
   }
+  if (msg.type === 'live') {
+    // silent mirror to the ephemeral live slot; only failures get a badge
+    capture(msg, 'live').then((r) => { if (!r.ok) flashBadge(false); });
+  }
 });
 
-async function capture({ text, url }) {
+async function capture({ text, url }, path = 'items') {
   const { server, token } = await chrome.storage.sync.get({ server: '', token: '' });
   if (!server) return { ok: false, error: 'set server URL in extension options' };
   try {
-    const res = await fetch(server.replace(/\/+$/, '') + '/api/items', {
+    const res = await fetch(server.replace(/\/+$/, '') + '/api/' + path, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',

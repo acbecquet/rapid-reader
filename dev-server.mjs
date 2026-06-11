@@ -4,7 +4,16 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import handler from './api/items.js';
+import statsHandler from './api/stats.js';
+import liveHandler from './api/live.js';
+import loginHandler from './api/login.js';
 
+const API = {
+  '/api/items': handler,
+  '/api/stats': statsHandler,
+  '/api/live': liveHandler,
+  '/api/login': loginHandler,
+};
 const PORT = process.env.PORT || 3000;
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -15,7 +24,7 @@ const MIME = {
 http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
 
-  if (url.pathname === '/api/items') {
+  if (API[url.pathname]) {
     // Shim the Vercel Node function conveniences.
     res.status = (c) => { res.statusCode = c; return res; };
     res.json = (o) => { res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(o)); };
@@ -24,7 +33,7 @@ http.createServer(async (req, res) => {
     for await (const c of req) chunks.push(c);
     const raw = Buffer.concat(chunks).toString();
     try { req.body = raw ? JSON.parse(raw) : {}; } catch { req.body = {}; }
-    return handler(req, res);
+    return API[url.pathname](req, res);
   }
 
   const path = normalize(url.pathname === '/' ? '/index.html' : url.pathname);
