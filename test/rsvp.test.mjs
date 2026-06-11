@@ -21,6 +21,15 @@ test('tokenize handles quotes and collapses whitespace', () => {
   assert.equal(t[2].sentenceEnd, true);
 });
 
+test('tokenize splits hyphenated and slashed compounds', () => {
+  const words = (s) => tokenize(s).map((x) => x.w);
+  assert.deepEqual(words('a run-of-the-mill day'), ['a', 'run', 'of', 'the', 'mill', 'day']);
+  assert.deepEqual(words('and/or em—dash en–dash'), ['and', 'or', 'em', 'dash', 'en', 'dash']);
+  assert.deepEqual(words('a 3-day, state-of-the-art co-op'), ['a', '3', 'day,', 'state', 'of', 'the', 'art', 'co', 'op']);
+  // digit-digit joins are ranges/dates and stay whole
+  assert.deepEqual(words('pages 2-3 of 1998-2024'), ['pages', '2-3', 'of', '1998-2024']);
+});
+
 test('orpIndex follows Spritz-style length buckets', () => {
   assert.equal(orpIndex('a'), 0);
   assert.equal(orpIndex('the'), 1);

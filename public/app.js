@@ -11,6 +11,7 @@ const DEFAULTS = {
   wpm: 300,
   mode: 'standard', // 'standard' | 'build'
   autoplay: true,
+  keepOpen: false, // keep the backlog visible while reading
   token: '',
 };
 let settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('rr:settings') || '{}') };
@@ -243,7 +244,7 @@ function openItem(item) {
   $('empty').hidden = true;
   $('reader').hidden = false;
   $('item-title').textContent = item.title;
-  $('sidebar').classList.remove('open');
+  if (!settings.keepOpen) setBacklog(false);
   renderList();
   play();
 }
@@ -262,7 +263,11 @@ $('restart').onclick = () => { if (cur) { cur.playedMs = 0; seek(0); } };
 $('back').onclick = () => cur && seek(R.prevSentenceStart(cur.tokens, cur.i));
 $('fwd').onclick = () => cur && seek(R.nextSentenceStart(cur.tokens, cur.i));
 $('stage').onclick = togglePlay;
-$('side-toggle').onclick = () => $('sidebar').classList.toggle('open');
+
+function setBacklog(open) {
+  $('top').classList.toggle('closed', !open);
+}
+$('toggle-btn').onclick = () => setBacklog($('top').classList.contains('closed'));
 
 function bumpWpm(d) {
   settings.wpm = Math.max(100, Math.min(1000, settings.wpm + d));
@@ -280,7 +285,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (e.key === 'Escape') {
     if (cur?.playing) pause();
-    $('sidebar').classList.add('open');
+    setBacklog(true);
     return;
   }
   if (!cur) return;
@@ -302,6 +307,7 @@ function fillSettingsForm() {
   $('s-wpm-val').textContent = settings.wpm;
   $('s-mode').value = settings.mode;
   $('s-autoplay').checked = settings.autoplay;
+  $('s-keepopen').checked = settings.keepOpen;
   $('s-token').value = settings.token;
 }
 
@@ -325,6 +331,8 @@ bind('s-bg', 'bg');
 bind('s-wpm', 'wpm', Number);
 bind('s-mode', 'mode');
 bind('s-autoplay', 'autoplay');
+bind('s-keepopen', 'keepOpen');
+$('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
 bind('s-token', 'token');
 
 // ---------- add text ----------
@@ -370,10 +378,19 @@ async function intakeShared() {
 }
 
 // ---------- boot ----------
+// Opening the app as /?token=… stores the token (one-time device setup
+// without typing it) and strips it from the URL.
+{
+  const p = new URLSearchParams(location.search);
+  if (p.get('token')) {
+    settings.token = p.get('token');
+    saveSettings();
+    p.delete('token');
+    history.replaceState(null, '', location.pathname + (p.size ? '?' + p : ''));
+  }
+}
 applySettings();
 fillSettingsForm();
-// On narrow screens (phone / tight corner) start with the backlog visible.
-if (matchMedia('(max-width: 600px)').matches) $('sidebar').classList.add('open');
 intakeShared().then(refresh);
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
 document.addEventListener('visibilitychange', () => {
