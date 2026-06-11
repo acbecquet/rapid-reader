@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Rapid Reader Capture",
+  "version": "1.0.0",
+  "description": "Send highlighted text straight to your Rapid Reader RSVP panel",
+  "permissions": ["storage", "contextMenus"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    { "matches": ["<all_urls>"], "js": ["content.js"], "run_at": "document_idle" }
+  ],
+  "options_ui": { "page": "options.html", "open_in_tab": false },
+  "action": {
+    "default_title": "Rapid Reader — right-click the icon for options",
+    "default_icon": { "16": "icons/icon-16.png", "48": "icons/icon-48.png" }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "rapid-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pin-to-corner RSVP reading panel with live highlight capture",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.0"
+  }
+}
