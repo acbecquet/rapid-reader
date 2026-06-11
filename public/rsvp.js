@@ -2,7 +2,10 @@
 
 // Split text into word tokens, marking clause/sentence/paragraph boundaries
 // so the player can pause longer where a reader naturally would.
+// Hyphens/dashes/slashes joining words read as separate words
+// ("run-of-the-mill" → 4 tokens); digit-digit joins like "2-3" stay whole.
 export function tokenize(text) {
+  text = text.replace(/([\p{L}\p{N}])[-–—/]+(?=\p{L})|(\p{L})[-–—/]+(?=[\p{L}\p{N}])/gu, '$1$2 ');
   const tokens = [];
   const paragraphs = text.split(/\n\s*\n+/);
   for (const para of paragraphs) {
