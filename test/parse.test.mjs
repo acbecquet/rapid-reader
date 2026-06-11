@@ -1,0 +1,88 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { parseStructure, readingTokens, isCodeHeavy } from '../public/parse.js';
+
+const SAMPLE = `# Change Summary
+
+The login flow now detects expired sessions earlier.
+
+## Files Changed
+- \`src/api/auth.ts\`: Updates token validation
+- \`src/components/Login.tsx\`: Adds error display
+
+| Tier | Price |
+|---|---|
+| Free | $0 |
+| Paid | $3/month |
+
+\`\`\`js
+const x = 1;
+const y = 2;
+\`\`\`
+
+> Check the refresh-token branch carefully.`;
+
+test('parseStructure identifies headings, paragraphs, bullets, tables, code', () => {
+  const s = parseStructure(SAMPLE);
+  assert.deepEqual(s.map((x) => x.type), [
+    'heading', 'paragraph', 'heading', 'bullets', 'table', 'code', 'paragraph',
+  ]);
+  assert.equal(s[0].title, 'Change Summary');
+  assert.equal(s[2].title, 'Files Changed');
+});
+
+test('bullets become sentence-terminated chunks', () => {
+  const s = parseStructure('- first point\n- second point.');
+  assert.equal(s[0].type, 'bullets');
+  assert.equal(s[0].text, 'first point. second point.');
+});
+
+test('multi-line bullet continuation folds into the bullet', () => {
+  const s = parseStructure('- a point that\n  continues here\n- next');
+  assert.equal(s[0].text, 'a point that continues here. next.');
+});
+
+test('tables turn into readable sentences', () => {
+  const s = parseStructure('| Tier | Price |\n|---|---|\n| Free | $0 |');
+  assert.equal(s[0].type, 'table');
+  assert.equal(s[0].text, 'Tier: Free, Price: $0.');
+});
+
+test('code blocks become a placeholder, raw preserved', () => {
+  const s = parseStructure('```py\nx = 1\n\ny = 2\n```');
+  assert.equal(s[0].type, 'code');
+  assert.equal(s[0].text, '⟨code · 2 lines⟩');
+  assert.ok(s[0].raw.includes('x = 1'));
+});
+
+test('blockquote markers are stripped into paragraphs', () => {
+  const s = parseStructure('> quoted advice\n> on two lines');
+  assert.equal(s[0].type, 'paragraph');
+  assert.equal(s[0].text, 'quoted advice on two lines');
+});
+
+test('readingTokens tags sections and collapses code to one token', () => {
+  const t = readingTokens(parseStructure(SAMPLE));
+  const codeTokens = t.filter((x) => x.code);
+  assert.equal(codeTokens.length, 1);
+  assert.equal(codeTokens[0].w, '⟨code · 2 lines⟩');
+  assert.ok(codeTokens[0].paraEnd); // long pause on the placeholder
+  // heading tokens carry their section index for navigation
+  assert.equal(t[0].sec, 0);
+  assert.ok(t.every((x) => typeof x.sec === 'number'));
+  // section indices are non-decreasing
+  for (let i = 1; i < t.length; i++) assert.ok(t[i].sec >= t[i - 1].sec);
+});
+
+test('plain prose parses as paragraphs and round-trips through tokens', () => {
+  const t = readingTokens(parseStructure('Just two sentences. Nothing fancy here.'));
+  assert.deepEqual(t.map((x) => x.w).slice(0, 3), ['Just', 'two', 'sentences.']);
+});
+
+test('isCodeHeavy detects diffs and code dumps, not prose', () => {
+  assert.equal(isCodeHeavy('diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new'), true);
+  const dump = '```\n' + 'let a = 1;\n'.repeat(30) + '```\nTiny note.';
+  assert.equal(isCodeHeavy(dump), true);
+  assert.equal(isCodeHeavy(SAMPLE), false);
+  assert.equal(isCodeHeavy('Plain explanation of the work that was done across several sentences and lines.\nMore prose.\nEven more.\nAnd more.'), false);
+});

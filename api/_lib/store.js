@@ -1,11 +1,8 @@
-// Storage: one JSON document of items, newest first, capped.
+// Storage: JSON documents keyed in Redis (rr:items, rr:stats).
 // Upstash Redis when configured (Vercel marketplace integration injects the
 // env vars); in-memory otherwise (local dev only — serverless instances
 // don't share memory).
-const KEY = 'rr:items';
-const CAP = 500;
-
-let memory = [];
+const memory = new Map();
 let client;
 
 function redisEnv() {
@@ -26,16 +23,15 @@ async function redis() {
   return client;
 }
 
-export async function getItems() {
-  if (!hasRedis()) return memory;
-  return (await (await redis()).get(KEY)) || [];
+export async function getDoc(key, fallback) {
+  if (!hasRedis()) return memory.has(key) ? memory.get(key) : fallback;
+  return (await (await redis()).get(key)) ?? fallback;
 }
 
-export async function setItems(items) {
-  const capped = items.slice(0, CAP);
+export async function setDoc(key, value) {
   if (!hasRedis()) {
-    memory = capped;
+    memory.set(key, value);
     return;
   }
-  await (await redis()).set(KEY, capped);
+  await (await redis()).set(key, value);
 }

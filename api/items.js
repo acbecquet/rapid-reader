@@ -1,36 +1,36 @@
-// The whole API. Items: { id, text, title, url, source, createdAt, readAt }.
+// Backlog endpoint. Items:
+// { id, text, title, url, source, sourceType, createdAt, readAt, progress,
+//   archivedAt, summary }
 // GET    /api/items            → { items }
-// POST   /api/items            { text, url?, title? } → { item }
-// PATCH  /api/items            { id, title? readAt? } → { item }
+// POST   /api/items            { text, url?, title?, sourceType? } → { item }
+// PATCH  /api/items            { id, title?|readAt?|progress?|archivedAt? } → { item }
+//        { id, summarize: true } → Gemini language summary stored on the item
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
-// Auth: Authorization: Bearer <RAPID_READER_TOKEN> (or ?token=…).
 import crypto from 'node:crypto';
-import { getItems, setItems, hasRedis } from './_lib/store.js';
-import { makeTitle } from './_lib/title.js';
+import { getDoc, setDoc } from './_lib/store.js';
+import { gate } from './_lib/auth.js';
+import { makeTitle, makeSummary } from './_lib/title.js';
 
-function authorized(req) {
-  const required = process.env.RAPID_READER_TOKEN;
-  if (!required) return !hasRedis(); // open only in local/dev memory mode
-  const header = req.headers['authorization'] || '';
-  const bearer = header.replace(/^Bearer\s+/i, '');
-  return bearer === required || req.query?.token === required;
+const KEY = 'rr:items';
+const CAP = 500;
+
+export const SOURCE_TYPES = [
+  'manual', 'web', 'claude_code', 'codex', 'copilot', 'docs', 'email', 'article', 'other',
+];
+
+function defaultSourceType(url) {
+  if (!url) return 'manual';
+  if (/(^|\.)claude\.(ai|com)$/.test(new URL(url).hostname)) return 'claude_code';
+  return 'web';
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'content-type,authorization');
-  if (req.method === 'OPTIONS') return res.status(204).end();
-
-  if (process.env.RAPID_READER_TOKEN === undefined && hasRedis()) {
-    return res.status(503).json({ error: 'Set the RAPID_READER_TOKEN env var' });
-  }
-  if (!authorized(req)) return res.status(401).json({ error: 'bad or missing token' });
-
+  if (!gate(req, res)) return;
   const body = req.body || {};
+  const items = await getDoc(KEY, []);
 
   if (req.method === 'GET') {
-    return res.status(200).json({ items: await getItems() });
+    return res.status(200).json({ items });
   }
 
   if (req.method === 'POST') {
@@ -44,27 +44,39 @@ export default async function handler(req, res) {
       title: (body.title || '').trim() || await makeTitle(text),
       url: body.url || '',
       source,
+      sourceType: SOURCE_TYPES.includes(body.sourceType)
+        ? body.sourceType
+        : defaultSourceType(body.url),
       createdAt: Date.now(),
       readAt: null,
+      progress: 0,
+      archivedAt: null,
+      summary: null,
     };
-    await setItems([item, ...await getItems()]);
+    await setDoc(KEY, [item, ...items].slice(0, CAP));
     return res.status(201).json({ item });
   }
 
   if (req.method === 'PATCH') {
-    const items = await getItems();
     const item = items.find((it) => it.id === body.id);
     if (!item) return res.status(404).json({ error: 'not found' });
+    if (body.summarize) {
+      const summary = await makeSummary(item.text);
+      if (!summary) return res.status(502).json({ error: 'summary unavailable — set GEMINI_API_KEY' });
+      item.summary = summary;
+    }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;
-    await setItems(items);
+    if ('progress' in body) item.progress = Math.max(0, Number(body.progress) || 0);
+    if ('archivedAt' in body) item.archivedAt = body.archivedAt;
+    await setDoc(KEY, items);
     return res.status(200).json({ item });
   }
 
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
-    await setItems((await getItems()).filter((it) => !ids.includes(it.id)));
+    await setDoc(KEY, items.filter((it) => !ids.includes(it.id)));
     return res.status(200).json({ ok: true });
   }
 

@@ -1,0 +1,12 @@
+{
+  "name": "rapid-reader-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MCP server: lets coding agents push items into your Rapid Reader review queue",
+  "type": "module",
+  "bin": { "rapid-reader-mcp": "server.mjs" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.0"
+  }
+}

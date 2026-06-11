@@ -27,7 +27,10 @@ test('items CRUD flow in memory mode', async () => {
   const item = r.body.item;
   assert.equal(item.text, 'Some highlighted passage about reading speed.');
   assert.equal(item.source, 'example.com');
+  assert.equal(item.sourceType, 'web');
   assert.equal(item.readAt, null);
+  assert.equal(item.progress, 0);
+  assert.equal(item.archivedAt, null);
   assert.ok(item.title.length > 0); // fallback title without GEMINI_API_KEY
   assert.ok(item.id);
 
@@ -48,6 +51,37 @@ test('items CRUD flow in memory mode', async () => {
   r = await call('DELETE', { body: { ids: r.body.items.map((i) => i.id) } });
   r = await call('GET');
   assert.deepEqual(r.body.items, []);
+});
+
+test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
+  let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
+  assert.equal(r.body.item.sourceType, 'codex');
+  const codexId = r.body.item.id;
+
+  r = await call('POST', { body: { text: 'From a Claude session', url: 'https://claude.ai/chat/abc' } });
+  assert.equal(r.body.item.sourceType, 'claude_code');
+
+  r = await call('POST', { body: { text: 'Pasted by hand' } });
+  assert.equal(r.body.item.sourceType, 'manual');
+
+  r = await call('POST', { body: { text: 'Bogus type falls back', sourceType: 'nonsense' } });
+  assert.equal(r.body.item.sourceType, 'manual');
+
+  r = await call('PATCH', { body: { id: codexId, progress: 42 } });
+  assert.equal(r.body.item.progress, 42);
+  r = await call('PATCH', { body: { id: codexId, archivedAt: 777 } });
+  assert.equal(r.body.item.archivedAt, 777);
+
+  const { body } = await call('GET');
+  await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
+});
+
+test('summarize without GEMINI_API_KEY reports 502', async () => {
+  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
+  r = await call('PATCH', { body: { id: r.body.item.id, summarize: true } });
+  assert.equal(r.code, 502);
+  const { body } = await call('GET');
+  await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
 });
 
 test('rejects empty text and unknown methods', async () => {

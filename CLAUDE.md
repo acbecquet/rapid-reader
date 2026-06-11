@@ -8,13 +8,18 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
 
 - `public/` — the entire frontend. Vanilla JS ES modules, no framework, no build step.
   - `rsvp.js` — pure functions only (tokenize, ORP, pacing, build-up). Unit tested.
-  - `app.js` — DOM wiring, player loop, polling, settings.
-- `api/items.js` — the single API endpoint (GET/POST/PATCH/DELETE), bearer-token auth.
-- `api/_lib/` — storage (Upstash Redis, in-memory fallback) and Gemini title generation.
+  - `parse.js` — pure structure parser (sections, code placeholders, tables→sentences,
+    code-heaviness detection). Unit tested.
+  - `app.js` — DOM wiring, player loop, polling, settings, filters, stats, sessions.
+- `api/items.js` — backlog endpoint (GET/POST/PATCH/DELETE), bearer-token auth.
+- `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
+- `api/_lib/` — storage (Upstash Redis, in-memory fallback), shared auth gate,
+  Gemini title + code-summary generation.
 - `extension/` — MV3 browser extension that captures highlighted text and POSTs it.
-- `dev-server.mjs` — local dev: serves `public/` and mounts `api/items.js` with the
+- `mcp/` — stdio MCP server (own package.json) so coding agents can push items.
+- `dev-server.mjs` — local dev: serves `public/` and mounts the api handlers with the
   in-memory store. `npm run dev`, then http://localhost:3000.
-- `test/` — `node --test` over the pure logic in `rsvp.js` and the API handler.
+- `test/` — `node --test` over the pure logic and the API handlers.
 
 Deployed on Vercel free tier: static files from `public/`, bare Node functions
 from `api/`. No framework preset, no build command.
@@ -42,8 +47,12 @@ optional decoration; apply them to every change.
 
 - The frontend stays buildless. If a change seems to require a bundler,
   reconsider the change.
-- `rsvp.js` stays pure (no DOM, no fetch) so it stays testable in Node.
-- The API stays one file. Item schema:
-  `{ id, text, title, url, source, createdAt, readAt }`.
-- Storage is a single JSON document in Redis (`rr:items`, newest first,
-  capped). This is a single-user app; don't add multi-tenancy machinery.
+- `rsvp.js` and `parse.js` stay pure (no DOM, no fetch) so they stay testable in Node.
+- Item schema: `{ id, text, title, url, source, sourceType, createdAt, readAt,
+  progress, archivedAt, summary }`.
+- Storage is JSON documents in Redis (`rr:items` newest-first capped,
+  `rr:stats` daily aggregates). This is a single-user app; don't add
+  multi-tenancy machinery.
+- Never RSVP raw code or raw diffs: parse them out or summarize them into
+  language first. Raw source stays accessible.
+- Stats stay aggregate-only: no captured text in `rr:stats`, ever.
