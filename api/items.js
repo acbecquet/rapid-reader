@@ -8,7 +8,7 @@
 //        { id, summary } → store an agent-written summary directly
 // DELETE /api/items?id=… or { id } or { ids: […] } → { ok }
 import crypto from 'node:crypto';
-import { getDoc, getDocs, setDoc } from './_lib/store.js';
+import { getDoc, getDocs, setDoc, delDoc } from './_lib/store.js';
 import { gate, keyFor } from './_lib/auth.js';
 import { makeTitle, makeSummary } from './_lib/title.js';
 import { fetchReadable } from './_lib/readable.js';
@@ -17,7 +17,7 @@ const KEY = 'rr:items';
 const CAP = 500;
 
 export const SOURCE_TYPES = [
-  'manual', 'web', 'claude_code', 'codex', 'copilot', 'docs', 'email', 'article', 'other',
+  'manual', 'web', 'claude_code', 'codex', 'copilot', 'docs', 'email', 'article', 'book', 'other',
 ];
 
 function defaultSourceType(url) {
@@ -100,7 +100,12 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
+    const gone = items.filter((it) => ids.includes(it.id));
     await setDoc(KEY_U, items.filter((it) => !ids.includes(it.id)));
+    // book content lives in its own doc (api/books.js) — delete it too
+    for (const it of gone) {
+      if (it.bookId) await delDoc(keyFor('rr:book:' + it.bookId, uid));
+    }
     return res.status(200).json({ ok: true });
   }
 

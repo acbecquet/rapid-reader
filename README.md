@@ -21,7 +21,9 @@ captures get summarized into review notes first.
    fetched and reorganized by Gemini into RSVP-friendly sections (tables
    become statements, boilerplate dropped). URLs inside any item are
    clickable in the transcript: the reader pauses and asks *Save & read
-   now / Save for later / Stay here*.
+   now / Save for later / Stay here*. **Read a book**: the **+** panel
+   accepts DRM-free `.epub` files — chapters become sections, progress is
+   saved, and reading resumes where you left off.
 2. **Organize** — items land in a synced backlog with short LLM-generated
    titles, source types (`claude code`, `codex`, `web`, …), unread/reviewed/
    archived states, and filters.
@@ -44,6 +46,14 @@ captures get summarized into review notes first.
   dropdown; raw source always one tap away.
 - **Code/diff summaries** — code-heavy items get a one-tap Gemini summary in
   readable language; the raw text is never RSVP'd word-by-word.
+- **Books (EPUB)** — upload a DRM-free `.epub`; it is parsed in your browser
+  (nothing leaves your device but the extracted text), chapters become
+  `[` / `]` sections, and your spot is remembered. Note: books bought in
+  Kindle / Apple Books / Google Play are DRM-locked and can't be imported,
+  and none of those stores expose your reading position — grab a DRM-free
+  copy (e.g. [gutenberg.org](https://www.gutenberg.org) or
+  [standardebooks.org](https://standardebooks.org)) instead. PDFs aren't
+  supported yet.
 - **Synced backlog** — grouped by day, filterable by status and source type,
   capped and stored in your own Redis.
 - **Reading stats** — words today, active time, items completed, 7-day
@@ -60,7 +70,10 @@ Two ways to feed agent output into the queue:
 the browser and hit the ▸ RSVP button. Text from `claude.ai` is automatically
 tagged `claude code`.
 
-**MCP server** — let the agent push its own summaries:
+**MCP server** — let the agent push its own summaries. Easiest: download and
+double-click `setup-mcp.cmd` (Windows) or `setup-mcp.command` (macOS) — it
+clones the repo, installs, and registers the server
+with Claude Code. Manually:
 
 ```sh
 cd mcp && npm install
@@ -189,5 +202,8 @@ Icons regenerate with `python3 scripts/gen_icons.py`.
 
 The reading/capture loop comes first. Later, pending real usage:
 multi-session organization for parallel agent workflows, richer history
-search, and hosted convenience features. Raw code/diff RSVP is a non-goal —
-review notes in plain language beat flashing braces at 500 WPM.
+search, PDF import, and hosted convenience features. Raw code/diff RSVP is a
+non-goal — review notes in plain language beat flashing braces at 500 WPM.
+Syncing reading position with Kindle / Apple Books / Google Play is also a
+non-goal for now: none of them expose position APIs, and store purchases are
+DRM-locked against import.

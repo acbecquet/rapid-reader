@@ -10,8 +10,12 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
   - `rsvp.js` — pure functions only (tokenize, ORP, pacing, build-up). Unit tested.
   - `parse.js` — pure structure parser (sections, code placeholders, tables→sentences,
     code-heaviness detection). Unit tested.
+  - `epub.js` — pure EPUB parser (zip via DecompressionStream, chapters→markdown).
+    Unit tested in Node.
   - `app.js` — DOM wiring, player loop, polling, settings, filters, stats, sessions.
 - `api/items.js` — backlog endpoint (GET/POST/PATCH/DELETE), bearer-token auth.
+- `api/books.js` — book text storage; backlog holds a light stub with `bookId` so
+  the 4s items poll never carries book-sized payloads.
 - `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
 - `api/_lib/` — storage (Upstash Redis, in-memory fallback), shared auth gate,
   Gemini title + code-summary generation.
@@ -47,12 +51,15 @@ optional decoration; apply them to every change.
 
 - The frontend stays buildless. If a change seems to require a bundler,
   reconsider the change.
-- `rsvp.js` and `parse.js` stay pure (no DOM, no fetch) so they stay testable in Node.
+- `rsvp.js`, `parse.js`, and `epub.js` stay pure (no DOM, no fetch) so they stay
+  testable in Node.
 - Item schema: `{ id, text, title, url, source, sourceType, createdAt, readAt,
-  progress, archivedAt, summary }`.
+  progress, archivedAt, summary }`; book items additionally carry `bookId` and
+  `words` (their `text` is a stub — the content lives in the book doc).
 - Storage is JSON documents in Redis, namespaced per user via
   `keyFor(base, uid)`: `rr:items[:uid]` newest-first capped, `rr:stats[:uid]`
-  daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless
+  daily aggregates, `rr:live[:uid]` ephemeral slot, `rr:book:<id>[:uid]` book
+  text (deleted when its item is deleted). Identity is a stateless
   HMAC session token (Google sign-in via `api/login.js`, or the owner/dev
   token → uid `owner` on the legacy un-namespaced keys). No passwords, no
   server-side sessions, no billing machinery.

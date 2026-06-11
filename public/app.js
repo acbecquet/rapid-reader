@@ -1,5 +1,6 @@
 import * as R from './rsvp.js';
 import * as P from './parse.js';
+import * as E from './epub.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -55,7 +56,8 @@ async function api(method, path, { body, query, keepalive } = {}) {
 // ---------- backlog list ----------
 const SOURCE_LABEL = {
   manual: 'manual', web: 'web', claude_code: 'claude code', codex: 'codex',
-  copilot: 'copilot', docs: 'docs', email: 'email', article: 'article', other: 'other',
+  copilot: 'copilot', docs: 'docs', email: 'email', article: 'article',
+  book: '📖 book', other: 'other',
 };
 let items = [];
 let knownIds = null; // null until first successful fetch
@@ -181,7 +183,7 @@ function renderList() {
     t.textContent = it.title;
     const m = document.createElement('div');
     m.className = 'm';
-    const words = it.text.split(/\s+/).length;
+    const words = it.words || it.text.split(/\s+/).length; // books store a stub text
     const pct = !it.readAt && it.progress > 0 ? Math.round((it.progress / words) * 100) + '%' : '';
     m.textContent = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
       .filter(Boolean).join(' · ');
@@ -493,7 +495,19 @@ $('keep-btn').onclick = async () => {
 };
 
 // ---------- open / close ----------
-function openItem(item, { start = true } = {}) {
+const bookCache = new Map(); // bookId → text, for the session
+
+async function openItem(item, { start = true } = {}) {
+  if (item.bookId && !bookCache.has(item.bookId)) {
+    try {
+      const { book } = await api('GET', 'books', { query: { id: item.bookId } });
+      bookCache.set(item.bookId, book.text);
+    } catch {
+      toast('Could not load the book');
+      return;
+    }
+  }
+  if (item.bookId) item.text = bookCache.get(item.bookId);
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
@@ -814,6 +828,25 @@ $('add-save').onclick = async () => {
     await refresh();
   } catch (e) {
     toast(e.message || 'Failed to add — check token');
+  }
+};
+
+// ---------- add a book (EPUB parsed locally, stored via api/books) ----------
+$('add-epub').onchange = async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  toast('Reading book…');
+  try {
+    const book = await E.parseEpub(await file.arrayBuffer());
+    const { item } = await api('POST', 'books', {
+      body: { title: book.title, author: book.author, text: E.compileBook(book) },
+    });
+    $('add').hidden = true;
+    toast(`📖 ${item.title} — ${book.chapters.length} chapters added`);
+    await refresh();
+  } catch (err) {
+    toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
 };
 
