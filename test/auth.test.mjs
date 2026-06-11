@@ -131,19 +131,19 @@ test('login reports unconfigured Google cleanly', async () => {
   assert.equal(r2.code, 503);
 });
 
-test('PUBLIC_DEMO: tokenless visitors get an isolated demo namespace', async () => {
+test('PUBLIC_DEMO: tokenless visitors share the dev-token queue', async () => {
   process.env.RAPID_READER_TOKEN = 'dev-secret';
   process.env.PUBLIC_DEMO = '1';
   try {
-    // visitor (no token) can use the app against the demo namespace
+    // visitor (no token) can use the app
     let r = await call(itemsHandler, 'POST', { body: { text: 'Demo visitor item' } });
     assert.equal(r.code, 201);
     r = await call(itemsHandler, 'GET');
     assert.equal(r.body.items[0].text, 'Demo visitor item');
 
-    // the owner's private backlog is untouched
+    // the dev token sees the same queue (family/demo phase)
     r = await itemsAs('dev-secret');
-    assert.deepEqual(r.body.items, []);
+    assert.equal(r.body.items[0].text, 'Demo visitor item');
 
     // cleanup, then verify the off-switch
     const { body } = await call(itemsHandler, 'GET');

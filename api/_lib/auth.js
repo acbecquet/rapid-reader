@@ -46,7 +46,7 @@ export function gate(req, res) {
   }
   if (!secret()) {
     if (hasRedis()) {
-      if (process.env.PUBLIC_DEMO === '1') return 'demo';
+      if (process.env.PUBLIC_DEMO === '1') return 'owner';
       res.status(503).json({ error: 'Set the RAPID_READER_TOKEN env var' });
       return null;
     }
@@ -56,8 +56,8 @@ export function gate(req, res) {
     || req.query?.token || '';
   const uid = uidFromBearer(bearer);
   if (!uid) {
-    // PUBLIC_DEMO=1: tokenless visitors share an isolated 'demo' namespace
-    if (process.env.PUBLIC_DEMO === '1') return 'demo';
+    // PUBLIC_DEMO=1: tokenless visitors share the dev-token queue
+    if (process.env.PUBLIC_DEMO === '1') return 'owner';
     res.status(401).json({ error: 'bad or missing token' });
     return null;
   }
