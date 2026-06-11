@@ -42,3 +42,11 @@ export async function setDoc(key, value) {
   }
   await (await redis()).set(key, value);
 }
+
+export async function delDoc(key) {
+  if (!hasRedis()) {
+    memory.delete(key);
+    return;
+  }
+  await (await redis()).del(key);
+}
