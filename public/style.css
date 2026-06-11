@@ -25,12 +25,18 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   z-index: 10;
+  display: flex;
+  flex-direction: column;
+  /* grows with the list until #main hits its min-height, then #list scrolls */
+  flex: 0 1 auto;
+  min-height: 0;
 }
 .bar {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 5px 10px;
+  flex: none;
 }
 .brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; }
 #status {
@@ -46,7 +52,6 @@ body {
 #top.closed #list { display: none; }
 #top.closed #toggle-btn { transform: rotate(-90deg); }
 #list {
-  max-height: min(34vh, 230px);
   overflow-y: auto;
   border-top: 1px solid var(--line);
   padding: 2px 0 6px;
@@ -101,7 +106,8 @@ body {
 
 /* ---------- reader ---------- */
 #main {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 220px; /* word, progress, and HUD always stay visible */
   position: relative;
   display: flex;
   flex-direction: column;
