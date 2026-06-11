@@ -269,13 +269,43 @@ function setBacklog(open) {
 }
 $('toggle-btn').onclick = () => setBacklog($('top').classList.contains('closed'));
 
-function bumpWpm(d) {
-  settings.wpm = Math.max(100, Math.min(1000, settings.wpm + d));
+function setWpm(v) {
+  settings.wpm = Math.max(100, Math.min(1000, Math.round(v) || settings.wpm));
   saveSettings();
   fillSettingsForm();
   if (cur) updateHud();
+}
+
+function bumpWpm(d) {
+  setWpm(settings.wpm + d);
   toast(settings.wpm + ' wpm target');
 }
+
+// Tap the HUD wpm value to type a target directly.
+$('wpm-now').onclick = () => {
+  if (!cur || $('wpm-now').querySelector('input')) return;
+  const wasPlaying = cur.playing;
+  if (wasPlaying) pause();
+  const span = $('wpm-now');
+  span.textContent = '';
+  const inp = document.createElement('input');
+  inp.type = 'number';
+  inp.min = 100; inp.max = 1000; inp.step = 10;
+  inp.value = settings.wpm;
+  span.append(inp);
+  inp.focus();
+  inp.select();
+  inp.onkeydown = (e) => {
+    if (e.key === 'Enter') inp.blur();
+    if (e.key === 'Escape') { inp.value = settings.wpm; inp.blur(); }
+  };
+  inp.onblur = () => {
+    setWpm(Number(inp.value));
+    inp.remove();
+    updateHud();
+    if (wasPlaying) play();
+  };
+};
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
@@ -304,7 +334,7 @@ function fillSettingsForm() {
   $('s-color').value = settings.color;
   $('s-bg').value = settings.bg;
   $('s-wpm').value = settings.wpm;
-  $('s-wpm-val').textContent = settings.wpm;
+  $('s-wpm-num').value = settings.wpm;
   $('s-mode').value = settings.mode;
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
@@ -320,7 +350,6 @@ const bind = (id, key, parse = (v) => v) => {
     settings[key] = parse(e.target.type === 'checkbox' ? e.target.checked : e.target.value);
     saveSettings();
     $('s-size-val').textContent = settings.size + 'px';
-    $('s-wpm-val').textContent = settings.wpm;
     if (cur) updateHud();
   };
 };
@@ -328,7 +357,8 @@ bind('s-font', 'font');
 bind('s-size', 'size', Number);
 bind('s-color', 'color');
 bind('s-bg', 'bg');
-bind('s-wpm', 'wpm', Number);
+$('s-wpm').oninput = (e) => setWpm(Number(e.target.value));
+$('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
 bind('s-mode', 'mode');
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
