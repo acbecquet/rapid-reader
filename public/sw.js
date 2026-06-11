@@ -1,6 +1,6 @@
 // Minimal service worker: makes the app installable and loadable offline.
 // Network-first so deploys show up immediately; cache is the fallback.
-const CACHE = 'rr-v2';
+const CACHE = 'rr-v3';
 const SHELL = ['/', '/app.js', '/rsvp.js', '/style.css', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
