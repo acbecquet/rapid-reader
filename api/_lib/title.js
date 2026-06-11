@@ -1,7 +1,7 @@
 // Gemini helpers (free API tier, GEMINI_API_KEY): short sidebar titles and
 // language summaries of code/diff-heavy captures. Both degrade gracefully.
 
-async function gemini(prompt, maxOutputTokens) {
+export async function gemini(prompt, maxOutputTokens) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';

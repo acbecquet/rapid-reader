@@ -17,7 +17,11 @@ captures get summarized into review notes first.
    phone (PWA), paste manually, or let your coding agent push items directly
    (MCP server). **Live mode** mirrors every selection straight into the
    reader, ready to play, without saving anything — a **＋ keep** chip adds
-   it to the backlog only if you want it.
+   it to the backlog only if you want it. **Paste a URL** and the page is
+   fetched and reorganized by Gemini into RSVP-friendly sections (tables
+   become statements, boilerplate dropped). URLs inside any item are
+   clickable in the transcript: the reader pauses and asks *Save & read
+   now / Save for later / Stay here*.
 2. **Organize** — items land in a synced backlog with short LLM-generated
    titles, source types (`claude code`, `codex`, `web`, …), unread/reviewed/
    archived states, and filters.

@@ -238,7 +238,7 @@ function showToken() {
   $('pre').textContent = t.w.slice(0, p);
   $('pivot').textContent = t.w[p] || '';
   $('post').textContent = t.w.slice(p + 1);
-  $('word').classList.toggle('code', !!t.code);
+  $('word').classList.toggle('code', !!(t.code || t.link)); // long tokens shrink
   syncSectionNav(t.sec);
   markTranscript();
   updateHud();
@@ -272,16 +272,59 @@ function buildTranscript() {
       const s = document.createElement('span');
       s.textContent = t.w;
       s.dataset.i = i;
+      if (t.link) s.classList.add('link');
       para.append(s, ' ');
     }
     box.append(para);
   });
   box.onclick = (e) => {
-    const i = e.target.closest('[data-i]')?.dataset.i;
-    if (i !== undefined) seek(Number(i));
+    const el = e.target.closest('[data-i]');
+    if (!el) return;
+    const i = Number(el.dataset.i);
+    const tok = cur?.tokens[i];
+    if (tok?.link) return openLinkModal(linkHref(tok.w));
+    seek(i);
   };
   applyTranscript();
 }
+
+// ---------- linked pages (URL inside a text → its own backlog item) ----------
+function linkHref(w) {
+  return w.replace(/^[("'\[«]+/, '').replace(/[).,;:!?\]'"»”]+$/, '');
+}
+
+let pendingLink = null;
+
+function openLinkModal(url) {
+  pendingLink = url;
+  if (cur?.playing) pause();
+  $('link-url').textContent = url;
+  $('linkmodal').hidden = false;
+}
+
+async function saveLink(readNow) {
+  const url = pendingLink;
+  pendingLink = null;
+  $('linkmodal').hidden = true;
+  if (!url) return;
+  toast('Fetching page…');
+  try {
+    const { item } = await api('POST', 'items', { body: { text: url } });
+    items = [item, ...items];
+    knownIds?.add(item.id);
+    lastRender = '';
+    renderList();
+    if (readNow) openItem(item);
+    else toast('Saved to backlog');
+  } catch (e) {
+    toast(e.message || 'Could not read that page');
+  }
+}
+
+$('link-read').onclick = () => saveLink(true);
+$('link-later').onclick = () => saveLink(false);
+$('link-cancel').onclick = () => { pendingLink = null; $('linkmodal').hidden = true; };
+$('linkmodal').onclick = (e) => { if (e.target === $('linkmodal')) $('link-cancel').click(); };
 
 function applyTranscript() {
   $('transcript').hidden = !settings.transcript || !cur;
@@ -691,7 +734,7 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
     if (e.key === 'Escape') $(open).hidden = true;
@@ -763,12 +806,14 @@ $('add-save').onclick = async () => {
   if (!text) return;
   $('add').hidden = true;
   $('add-text').value = '';
+  const isUrl = /^https?:\/\/\S+$/i.test(text);
+  if (isUrl) toast('Fetching page…');
   try {
     await api('POST', 'items', { body: { text, sourceType: $('add-source').value } });
-    toast('Added to backlog');
+    toast(isUrl ? 'Page added to backlog' : 'Added to backlog');
     await refresh();
-  } catch {
-    toast('Failed to add — check token');
+  } catch (e) {
+    toast(e.message || 'Failed to add — check token');
   }
 };
 

@@ -11,6 +11,7 @@ import crypto from 'node:crypto';
 import { getDoc, getDocs, setDoc } from './_lib/store.js';
 import { gate, keyFor } from './_lib/auth.js';
 import { makeTitle, makeSummary } from './_lib/title.js';
+import { fetchReadable } from './_lib/readable.js';
 
 const KEY = 'rr:items';
 const CAP = 500;
@@ -39,19 +40,34 @@ export default async function handler(req, res) {
   const items = await getDoc(KEY_U, []);
 
   if (req.method === 'POST') {
-    const text = (body.text || '').trim();
+    let text = (body.text || '').trim();
     if (!text) return res.status(400).json({ error: 'text required' });
+    let url = body.url || '';
+    let title = (body.title || '').trim();
+    let digested = false;
+    // A bare URL means "read this page": fetch it and reorganize for RSVP.
+    if (/^https?:\/\/\S+$/i.test(text)) {
+      try {
+        url = url || text;
+        const page = await fetchReadable(text);
+        text = page.markdown;
+        title = title || page.title;
+        digested = true;
+      } catch {
+        return res.status(422).json({ error: 'could not read that page — try copying its text instead' });
+      }
+    }
     let source = '';
-    try { source = new URL(body.url).hostname; } catch {}
+    try { source = new URL(url).hostname; } catch {}
     const item = {
       id: crypto.randomUUID(),
       text,
-      title: (body.title || '').trim() || await makeTitle(text),
-      url: body.url || '',
+      title: title.slice(0, 100) || await makeTitle(text),
+      url,
       source,
       sourceType: SOURCE_TYPES.includes(body.sourceType)
         ? body.sourceType
-        : defaultSourceType(body.url),
+        : (digested ? 'article' : defaultSourceType(url)),
       createdAt: Date.now(),
       readAt: null,
       progress: 0,

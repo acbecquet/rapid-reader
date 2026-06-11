@@ -30,6 +30,16 @@ test('tokenize splits hyphenated and slashed compounds', () => {
   assert.deepEqual(words('pages 2-3 of 1998-2024'), ['pages', '2-3', 'of', '1998-2024']);
 });
 
+test('URLs stay atomic and are flagged as links', () => {
+  const t = tokenize('read this https://ex.com/a-long/path?q=1 and also (https://x.io/p), thanks');
+  const links = t.filter((x) => x.link);
+  assert.equal(links.length, 2);
+  assert.equal(links[0].w, 'https://ex.com/a-long/path?q=1'); // no compound splitting
+  assert.equal(links[1].w, '(https://x.io/p),');
+  assert.equal(links[1].clauseEnd, true);
+  assert.deepEqual(t.slice(0, 2).map((x) => x.w), ['read', 'this']);
+});
+
 test('orpIndex follows Spritz-style length buckets', () => {
   assert.equal(orpIndex('a'), 0);
   assert.equal(orpIndex('the'), 1);

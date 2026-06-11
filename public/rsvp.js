@@ -4,21 +4,28 @@
 // so the player can pause longer where a reader naturally would.
 // Hyphens/dashes/slashes joining words read as separate words
 // ("run-of-the-mill" → 4 tokens); digit-digit joins like "2-3" stay whole.
+// URLs stay atomic and are flagged `link` for transcript click-through.
+const COMPOUND = /([\p{L}\p{N}])[-–—/]+(?=\p{L})|(\p{L})[-–—/]+(?=[\p{L}\p{N}])/gu;
+const URLISH = /^[("'\[«]*https?:\/\//i;
+
 export function tokenize(text) {
-  text = text.replace(/([\p{L}\p{N}])[-–—/]+(?=\p{L})|(\p{L})[-–—/]+(?=[\p{L}\p{N}])/gu, '$1$2 ');
   const tokens = [];
-  const paragraphs = text.split(/\n\s*\n+/);
-  for (const para of paragraphs) {
-    const words = para.split(/\s+/).filter(Boolean);
-    for (let i = 0; i < words.length; i++) {
-      const w = words[i];
-      tokens.push({
-        w,
-        sentenceEnd: /[.?!…]["')\]]*$/.test(w),
-        clauseEnd: /[,;:—]["')\]]*$/.test(w),
-      });
+  for (const para of text.split(/\n\s*\n+/)) {
+    const before = tokens.length;
+    for (const raw of para.split(/\s+/)) {
+      if (!raw) continue;
+      const pieces = URLISH.test(raw) ? [raw] : raw.replace(COMPOUND, '$1$2 ').split(' ');
+      for (const w of pieces) {
+        if (!w) continue;
+        tokens.push({
+          w,
+          ...(URLISH.test(w) ? { link: true } : {}),
+          sentenceEnd: /[.?!…]["')\]]*$/.test(w),
+          clauseEnd: /[,;:—]["')\]]*$/.test(w),
+        });
+      }
     }
-    if (tokens.length) tokens[tokens.length - 1].paraEnd = true;
+    if (tokens.length > before) tokens[tokens.length - 1].paraEnd = true;
   }
   return tokens;
 }
