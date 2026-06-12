@@ -27,9 +27,10 @@ body {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  /* grows with the list until #main hits its min-height, then #list scrolls */
+  /* grows into the spare space above the reader, then the backlog scrolls */
   flex: 0 1 auto;
   min-height: 0;
+  max-height: min(42vh, 340px);
 }
 .bar {
   display: flex;
@@ -74,6 +75,8 @@ body {
 .chip.accent { border-color: var(--accent); color: var(--fg); }
 #top.closed #toggle-btn { transform: rotate(-90deg); }
 #list {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   border-top: 1px solid var(--line);
   padding: 2px 0 6px;
