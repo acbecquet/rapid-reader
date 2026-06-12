@@ -2,7 +2,7 @@
 // Gemini reorganizes (headings, short paragraphs, bullets; tables become
 // statements; figures get a one-line description; boilerplate dropped).
 // Without GEMINI_API_KEY the stripped text is used as-is.
-import { gemini } from './title.js';
+import { llm } from './title.js';
 
 const PRIVATE_HOST = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|\[::1\])|\.(local|internal)$/i;
 
@@ -50,7 +50,7 @@ export async function fetchReadable(url) {
   const text = htmlToText(html);
   if (text.split(/\s+/).length < 20) throw new Error('no readable content found');
 
-  const organized = await gemini(
+  const organized = await llm(
     'Rewrite this webpage content as clean markdown organized for rapid ' +
       'serial reading: # headings for sections, short paragraphs, bullet ' +
       'lists where natural. Convert tables into short bullet statements. ' +

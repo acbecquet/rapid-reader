@@ -25,6 +25,9 @@ call claude mcp add rapid-reader ^
   -e RAPID_READER_TOKEN=dghhdsaw87665432wwdghy456dfjjout3 ^
   -- node "%DIR%\mcp\server.mjs"
 
+node "%DIR%\hooks\install.mjs"
+
 echo.
-echo Done. Restart Claude Code, then try: "send a summary of what you did to my review queue"
+echo Done. Restart Claude Code — its responses now stream to your queue,
+echo and you can ask it to "send a summary of what you did to my review queue"
 pause

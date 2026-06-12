@@ -1,7 +1,33 @@
-// Gemini helpers (free API tier, GEMINI_API_KEY): short sidebar titles and
-// language summaries of code/diff-heavy captures. Both degrade gracefully.
+// LLM helpers: short sidebar titles and language summaries of code/diff-heavy
+// captures. Uses MiniMax (MINIMAX_API_KEY) when configured, falling back to
+// Gemini (GEMINI_API_KEY). Both degrade gracefully to null.
 
-export async function gemini(prompt, maxOutputTokens) {
+async function minimax(prompt, maxOutputTokens) {
+  const key = process.env.MINIMAX_API_KEY;
+  if (!key) return null;
+  const base = process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/v1';
+  const model = process.env.MINIMAX_MODEL || 'MiniMax-M2';
+  try {
+    const res = await fetch(`${base}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer ' + key },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: maxOutputTokens,
+        temperature: 0.2,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return (data.choices?.[0]?.message?.content || '').trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+async function gemini(prompt, maxOutputTokens) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return null;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
@@ -30,13 +56,17 @@ export async function gemini(prompt, maxOutputTokens) {
   }
 }
 
+export async function llm(prompt, maxOutputTokens) {
+  return (await minimax(prompt, maxOutputTokens)) ?? gemini(prompt, maxOutputTokens);
+}
+
 export function fallbackTitle(text) {
   const words = text.replace(/[#*`>|_~-]+/g, ' ').trim().split(/\s+/);
   return words.slice(0, 7).join(' ') + (words.length > 7 ? '…' : '');
 }
 
 export async function makeTitle(text) {
-  const title = await gemini(
+  const title = await llm(
     'Write a terse 3-7 word title for the following text. ' +
       'Reply with the title only, no quotes.\n\n' + text.slice(0, 4000),
     1000
@@ -45,9 +75,9 @@ export async function makeTitle(text) {
 }
 
 // Code/diff → readable review notes (the RSVP-able language around the work).
-// Returns null when Gemini is unavailable so the caller can report it.
+// Returns null when no LLM is available so the caller can report it.
 export async function makeSummary(text) {
-  return gemini(
+  return llm(
     'Summarize this code or diff into short review notes a developer can ' +
       'read quickly: what changed, any behavior changes, and what to ' +
       'double-check. Use markdown headings and bullet points with short ' +
