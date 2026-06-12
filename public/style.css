@@ -95,10 +95,9 @@ body {
 .item:hover { background: #1d1d25; }
 .item.active { background: #20202a; border-left-color: var(--accent); }
 .item .t {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   line-height: 1.35;
 }
 .item.unread .t { color: #fff; }
@@ -111,7 +110,6 @@ body {
   margin-right: 5px;
   vertical-align: 1px;
 }
-.item .m { color: var(--dim); font-size: 9.5px; margin-top: 1px; }
 .item .acts {
   position: absolute;
   top: 3px; right: 4px;
@@ -157,8 +155,9 @@ body {
 #s-account { margin: 9px 0; font-size: 11px; color: var(--dim); }
 #s-account .acct-line { margin-bottom: 6px; }
 #s-account #s-email { color: var(--fg); }
-#reader { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#reader { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 #reader[hidden] { display: none; }
+#close-reader { position: absolute; top: 5px; left: 8px; z-index: 5; }
 #secnav {
   display: flex;
   align-items: center;

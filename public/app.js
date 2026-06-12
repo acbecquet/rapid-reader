@@ -77,7 +77,13 @@ async function refresh() {
     knownIds = new Set(items.map((i) => i.id));
     renderList();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
-    if (newest && settings.autoplay && (!cur || !cur.playing)) {
+    // an upserted item (e.g. a live Claude session) refreshes the open reader
+    const open = cur && !cur.item.live && fresh.find((it) => it.id === cur.item.id);
+    if (open && !cur.playing && !open.bookId && open.text !== cur.item.text) {
+      open.progress = cur.i;
+      openItem(open, { start: false });
+      toast('Updated with new content');
+    } else if (newest && settings.autoplay && (!cur || !cur.playing)) {
       openItem(newest);
       toast('New capture — playing');
     } else {
@@ -181,11 +187,10 @@ function renderList() {
     const t = document.createElement('div');
     t.className = 't';
     t.textContent = it.title;
-    const m = document.createElement('div');
-    m.className = 'm';
     const words = it.words || it.text.split(/\s+/).length; // books store a stub text
     const pct = !it.readAt && it.progress > 0 ? Math.round((it.progress / words) * 100) + '%' : '';
-    m.textContent = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
+    // one-line rows: details live in the tooltip, not a second line
+    row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
       .filter(Boolean).join(' · ');
 
     const acts = document.createElement('div');
@@ -214,8 +219,9 @@ function renderList() {
       api('DELETE', 'items', { query: { id: it.id } }).catch(() => {});
     });
 
-    row.append(t, m, acts);
-    row.onclick = () => openItem(it);
+    row.append(t, acts);
+    // clicking the open item again deselects it (frees the reader for live mode)
+    row.onclick = () => (cur?.item.id === it.id ? closeReader() : openItem(it));
     list.append(row);
   }
 }
@@ -543,6 +549,8 @@ async function openItem(item, { start = true } = {}) {
     $('paused-hint').hidden = false;
   }
 }
+
+$('close-reader').onclick = () => closeReader();
 
 function closeReader() {
   clearTimeout(timer);

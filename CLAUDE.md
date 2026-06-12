@@ -18,9 +18,12 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
   the 4s items poll never carries book-sized payloads.
 - `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
 - `api/_lib/` — storage (Upstash Redis, in-memory fallback), shared auth gate,
-  Gemini title + code-summary generation.
+  LLM title + code-summary generation (MiniMax first, Gemini fallback).
 - `extension/` — MV3 browser extension that captures highlighted text and POSTs it.
 - `mcp/` — stdio MCP server (own package.json) so coding agents can push items.
+- `hooks/` — Claude Code Stop hook: pushes each session's transcript to the
+  backlog (upsert per `sessionId`); `install.mjs` wires it into
+  `~/.claude/settings.json`.
 - `dev-server.mjs` — local dev: serves `public/` and mounts the api handlers with the
   in-memory store. `npm run dev`, then http://localhost:3000.
 - `test/` — `node --test` over the pure logic and the API handlers.
@@ -55,7 +58,8 @@ optional decoration; apply them to every change.
   testable in Node.
 - Item schema: `{ id, text, title, url, source, sourceType, createdAt, readAt,
   progress, archivedAt, summary }`; book items additionally carry `bookId` and
-  `words` (their `text` is a stub — the content lives in the book doc).
+  `words` (their `text` is a stub — the content lives in the book doc); Claude
+  session items carry `sessionId` (POSTs with the same `sessionId` upsert).
 - Storage is JSON documents in Redis, namespaced per user via
   `keyFor(base, uid)`: `rr:items[:uid]` newest-first capped, `rr:stats[:uid]`
   daily aggregates, `rr:live[:uid]` ephemeral slot, `rr:book:<id>[:uid]` book

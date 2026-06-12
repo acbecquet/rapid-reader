@@ -62,9 +62,25 @@ captures get summarized into review notes first.
 - **Appearance** — font, size, text and background colors, all live.
 - **PWA** — installable on your phone; capture via select → Share.
 
+## Capture from anywhere on your computer
+
+The browser extension only sees web pages. For everything else —
+PDFs, editors, terminals, chat apps — double-click **`capture-anywhere.cmd`**
+(Windows) or **`capture-anywhere.command`** (macOS): it watches your
+clipboard, so highlight text in *any* app, press Ctrl+C / Cmd+C, and it
+appears in the reader instantly (live mode — nothing saved unless you
+**＋ keep** it). Close the window to stop.
+
 ## Claude Code workflow
 
-Two ways to feed agent output into the queue:
+Three ways to feed agent output into the queue:
+
+**Live transcripts (hook)** — `node hooks/install.mjs` (the setup script
+below does it for you) registers a Stop hook in `~/.claude/settings.json`:
+every time Claude finishes responding — desktop app or terminal — the
+session transcript lands in your backlog as one item per session, your
+prompts as section headings, updating live as the conversation grows.
+Remove anytime with `node hooks/install.mjs --remove`.
 
 **Highlight capture** — select any Claude Code (or Codex/Copilot) output in
 the browser and hit the ▸ RSVP button. Text from `claude.ai` is automatically
@@ -104,10 +120,12 @@ an agent session — it uses your `GEMINI_API_KEY`.
    tier) and connect it. This injects the Redis env vars automatically.
 3. In **Settings → Environment Variables**, add:
    - `RAPID_READER_TOKEN` — any long random string; this is your private key.
-   - `GEMINI_API_KEY` *(optional)* — free key from
-     [aistudio.google.com](https://aistudio.google.com/apikey) for titles and
-     code summaries. (`GEMINI_MODEL` overrides the default
-     `gemini-2.5-flash-lite`.)
+   - `MINIMAX_API_KEY` *(optional)* — used first for titles, code summaries,
+     and page reorganization (`MINIMAX_MODEL` overrides the default
+     `MiniMax-M2`; `MINIMAX_BASE_URL` overrides `https://api.minimax.io/v1`).
+   - `GEMINI_API_KEY` *(optional)* — fallback LLM; free key from
+     [aistudio.google.com](https://aistudio.google.com/apikey).
+     (`GEMINI_MODEL` overrides the default `gemini-2.5-flash-lite`.)
 4. Redeploy. Open the app and visit `https://your-app.vercel.app/?token=YOURTOKEN`
    once per device to self-configure.
 

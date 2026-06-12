@@ -59,6 +59,18 @@ export default async function handler(req, res) {
     }
     let source = '';
     try { source = new URL(url).hostname; } catch {}
+    // Claude-session pushes (hooks/) upsert: same sessionId → refresh the item
+    const sessionId = body.sessionId ? String(body.sessionId).slice(0, 80) : null;
+    if (sessionId) {
+      const prev = items.find((it) => it.sessionId === sessionId);
+      if (prev) {
+        prev.text = text;
+        if (title) prev.title = title.slice(0, 100);
+        prev.readAt = null; // new content → unread again
+        await setDoc(KEY_U, [prev, ...items.filter((it) => it !== prev)]);
+        return res.status(200).json({ item: prev });
+      }
+    }
     const item = {
       id: crypto.randomUUID(),
       text,
@@ -73,6 +85,7 @@ export default async function handler(req, res) {
       progress: 0,
       archivedAt: null,
       summary: null,
+      ...(sessionId ? { sessionId } : {}),
     };
     await setDoc(KEY_U, [item, ...items].slice(0, CAP));
     return res.status(201).json({ item });
