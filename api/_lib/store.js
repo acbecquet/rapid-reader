@@ -10,14 +10,27 @@ const memory = new Map();      // doc store fallback
 const bodyMem = new Map();     // body store fallback: `${uid}/${id}` -> text
 let client;
 
-// Vercel/Upstash inject one of several env-var shapes depending on which
-// integration was clicked. Accept them all so persistence "just works".
+// Find an env var by regex (Vercel Marketplace integrations sometimes add a
+// store-name prefix, so we can't hard-code exact names). Returns the value.
+function pickEnv(re, exclude) {
+  for (const k of Object.keys(process.env)) {
+    if (re.test(k) && (!exclude || !exclude.test(k)) && process.env[k]) return process.env[k];
+  }
+  return undefined;
+}
+
+// Upstash/Vercel KV REST credentials under any prefix (UPSTASH_REDIS_REST_URL,
+// KV_REST_API_URL, <PREFIX>_KV_REST_API_URL, …). REST only — @upstash/redis.
 function redisEnv() {
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL
-    || process.env.REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN
-    || process.env.REDIS_REST_TOKEN;
+  const url = pickEnv(/(^|_)(UPSTASH_REDIS|KV|REDIS)_REST(_API)?_URL$/i);
+  const token = pickEnv(/(^|_)(UPSTASH_REDIS|KV|REDIS)_REST(_API)?_TOKEN$/i, /READ_ONLY/i);
   return url && token ? { url, token } : null;
+}
+
+// Vercel Blob read-write token under any prefix (BLOB_READ_WRITE_TOKEN,
+// <STORE>_READ_WRITE_TOKEN).
+function blobToken() {
+  return pickEnv(/(^|_)BLOB_READ_WRITE_TOKEN$/i) || pickEnv(/_READ_WRITE_TOKEN$/i);
 }
 
 export function hasRedis() {
@@ -25,7 +38,7 @@ export function hasRedis() {
 }
 
 export function hasBlob() {
-  return !!process.env.BLOB_READ_WRITE_TOKEN;
+  return !!blobToken();
 }
 
 // What the /api/health probe reports.
@@ -35,6 +48,13 @@ export function storageStatus() {
     blob: hasBlob(),
     persistent: hasRedis(), // the index must be durable for the backlog to survive
   };
+}
+
+// Diagnostic: names (never values) of storage-related env vars present.
+export function storageEnvKeys() {
+  return Object.keys(process.env)
+    .filter((k) => /(redis|kv_|_kv|blob|upstash|storage)/i.test(k))
+    .sort();
 }
 
 async function redis() {
@@ -80,7 +100,7 @@ export async function putBody(uid, id, text) {
     access: 'public',
     addRandomSuffix: true,
     contentType: 'text/plain; charset=utf-8',
-    token: process.env.BLOB_READ_WRITE_TOKEN,
+    token: blobToken(),
   });
   return url;
 }
@@ -97,7 +117,7 @@ export async function delBody(uid, id, bodyUrl) {
   if (bodyUrl && hasBlob()) {
     try {
       const { del } = await import('@vercel/blob');
-      await del(bodyUrl, { token: process.env.BLOB_READ_WRITE_TOKEN });
+      await del(bodyUrl, { token: blobToken() });
     } catch {}
     return;
   }
