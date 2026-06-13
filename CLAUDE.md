@@ -20,6 +20,10 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
 - `api/prefs.js` — per-user ⚡ capture gate, source on/off toggles, column layout.
 - `api/health.js` — storage probe ({ redis, blob, persistent }); open it to see
   whether the backlog will persist.
+- `api/log.js` — frontend error/anomaly log (capped, deduped per signature) so
+  bugs surface instead of hiding. Pairs with the AI title self-heal: a bad
+  title is logged AND lazily re-derived (items PATCH `retitle`) for the item
+  you open — capped per session so it never storms the LLM quota.
 - `api/telegram.js`, `api/email.js` — webhook ingestion (shared secret) → owner queue.
 - `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
 - `api/_lib/` — `store.js` (Redis lean index + Vercel Blob bodies, in-memory dev

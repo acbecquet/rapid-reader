@@ -11,6 +11,7 @@ import prefsHandler from './api/prefs.js';
 import healthHandler from './api/health.js';
 import telegramHandler from './api/telegram.js';
 import emailHandler from './api/email.js';
+import logHandler from './api/log.js';
 
 const API = {
   '/api/items': handler,
@@ -21,6 +22,7 @@ const API = {
   '/api/health': healthHandler,
   '/api/telegram': telegramHandler,
   '/api/email': emailHandler,
+  '/api/log': logHandler,
 };
 const PORT = process.env.PORT || 3000;
 const MIME = {

@@ -54,6 +54,49 @@ async function api(method, path, { body, query, keepalive } = {}) {
   return res.json();
 }
 
+// ---------- error log + AI self-heal ----------
+// Anything that throws or looks wrong is logged to the backend (deduped,
+// capped) so bugs surface and get fixed — never silently hidden.
+const loggedSigs = new Set();
+let logCount = 0;
+function logError(kind, message, context = '') {
+  const msg = String(message || '').slice(0, 500);
+  const ctx = String(context || '').slice(0, 200);
+  const sig = kind + '|' + msg + '|' + ctx;
+  if (!msg || loggedSigs.has(sig) || logCount > 60) return;
+  loggedSigs.add(sig); logCount++;
+  api('POST', 'log', { body: { kind, message: msg, context: ctx }, keepalive: true }).catch(() => {});
+}
+addEventListener('error', (e) => logError('window-error', e.message, (e.filename || '') + ':' + (e.lineno || '')));
+addEventListener('unhandledrejection', (e) => logError('unhandled-rejection', e.reason?.message || String(e.reason || '')));
+
+// A title that "looks wrong": empty, only symbols, or leaked markup/markdown.
+function looksBadTitle(t) {
+  t = String(t || '').trim();
+  if (t.length < 2) return true;
+  if (/^[#*\-–—.·•·\s]+$/.test(t)) return true;       // just markdown/punctuation
+  if (/^[<{[]/.test(t) || /environment_context|AGENTS\.md/i.test(t)) return true; // markup leak
+  return false;
+}
+// lazy + capped: heal only items you open, once each, a handful per session
+const healed = new Set();
+let healCount = 0;
+async function healTitle(item) {
+  if (healed.has(item.id) || healCount >= 8) return;
+  healed.add(item.id); healCount++;
+  logError('bad-title', item.title, item.sourceType + ':' + item.id);
+  try {
+    const { item: fixed } = await api('PATCH', 'items', { body: { id: item.id, retitle: true } });
+    if (fixed?.title && !looksBadTitle(fixed.title)) {
+      item.title = fixed.title;
+      const cached = items.find((i) => i.id === item.id);
+      if (cached) cached.title = fixed.title;
+      if (cur?.item.id === item.id) $('item-title').textContent = fixed.title;
+      lastRender = ''; renderColumns();
+    }
+  } catch { /* logged already; leave the heuristic title */ }
+}
+
 // ---------- backlog list ----------
 const SOURCE_LABEL = {
   manual: 'manual', web: 'web', claude_code: 'claude code', codex: 'codex',
@@ -726,16 +769,26 @@ async function openItem(item, { start = true } = {}) {
     try {
       ({ text } = await api('GET', 'items', { query: { id: item.id } }));
       bodyCache.set(item.id, text);
-    } catch {
+    } catch (e) {
+      logError('load-failed', e.message, item.id);
       toast('Could not load that item');
       return;
     }
   }
+  // lazy AI self-heal: only the item you actually opened, only if it looks wrong
+  if (!item.live && looksBadTitle(item.title)) healTitle(item);
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
-  const sections = P.parseStructure(text);
-  const tokens = P.readingTokens(sections);
+  let sections, tokens;
+  try {
+    sections = P.parseStructure(text);
+    tokens = P.readingTokens(sections);
+  } catch (e) {
+    logError('parse-failed', e.message, item.sourceType + ':' + item.id);
+    sections = [{ type: 'paragraph', raw: text }];
+    tokens = R.tokenize(text).map((t) => ({ ...t, sec: 0 }));
+  }
   const anchors = [];
   sections.forEach((s, idx) => {
     if (s.type === 'heading') {
