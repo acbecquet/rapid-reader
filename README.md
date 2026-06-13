@@ -18,7 +18,7 @@ captures get summarized into review notes first.
    (MCP server). **Live mode** mirrors every selection straight into the
    reader, ready to play, without saving anything — a **＋ keep** chip adds
    it to the backlog only if you want it. **Paste a URL** and the page is
-   fetched and reorganized by Gemini into RSVP-friendly sections (tables
+   fetched and reorganized by an LLM into RSVP-friendly sections (tables
    become statements, boilerplate dropped). URLs inside any item are
    clickable in the transcript: the reader pauses and asks *Save & read
    now / Save for later / Stay here*. **Read a book**: the **+** panel
@@ -44,8 +44,9 @@ captures get summarized into review notes first.
 - **Build mode** — starts at 80 WPM, +20 every 15 s until your target.
 - **Section navigation** — jump between headings with `[` / `]` or the
   dropdown; raw source always one tap away.
-- **Code/diff summaries** — code-heavy items get a one-tap Gemini summary in
-  readable language; the raw text is never RSVP'd word-by-word.
+- **Code/diff summaries** — code-heavy items get a one-tap LLM summary in
+  readable language (Gemini first, MiniMax on overflow); the raw text is
+  never RSVP'd word-by-word.
 - **Books (EPUB)** — upload a DRM-free `.epub`; it is parsed in your browser
   (nothing leaves your device but the extracted text), chapters become
   `[` / `]` sections, and your spot is remembered. Note: books bought in
@@ -70,6 +71,12 @@ PDFs, editors, terminals, chat apps — double-click **`capture-anywhere.cmd`**
 clipboard, so highlight text in *any* app, press Ctrl+C / Cmd+C, and it
 appears in the reader instantly (live mode — nothing saved unless you
 **＋ keep** it). Close the window to stop.
+
+The **⚡ toggle** in the app header turns this capture stream on and off
+without touching the running script: when off, the server drops incoming
+clipboard captures so they can't interrupt your reading. (If captures show
+"sent" in the watcher window but don't appear, the toggle is off, or the
+browser tab is on a stale build — hard-refresh it.)
 
 ## Claude Code workflow
 
@@ -120,12 +127,14 @@ an agent session — it uses your `GEMINI_API_KEY`.
    tier) and connect it. This injects the Redis env vars automatically.
 3. In **Settings → Environment Variables**, add:
    - `RAPID_READER_TOKEN` — any long random string; this is your private key.
-   - `MINIMAX_API_KEY` *(optional)* — used first for titles, code summaries,
-     and page reorganization (`MINIMAX_MODEL` overrides the default
-     `MiniMax-M2`; `MINIMAX_BASE_URL` overrides `https://api.minimax.io/v1`).
-   - `GEMINI_API_KEY` *(optional)* — fallback LLM; free key from
+   - `GEMINI_API_KEY` *(optional)* — used first (free tier) for titles, code
+     summaries, and page reorganization; key from
      [aistudio.google.com](https://aistudio.google.com/apikey).
      (`GEMINI_MODEL` overrides the default `gemini-2.5-flash-lite`.)
+   - `MINIMAX_API_KEY` *(optional)* — takes over when Gemini is out of quota
+     or fails (`MINIMAX_MODEL` overrides the default `MiniMax-M3`;
+     `MINIMAX_BASE_URL` overrides `https://api.minimax.io/v1`). The in-app
+     **Review model** setting can also send everything straight to MiniMax.
 4. Redeploy. Open the app and visit `https://your-app.vercel.app/?token=YOURTOKEN`
    once per device to self-configure.
 

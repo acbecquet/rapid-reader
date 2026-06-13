@@ -8,41 +8,66 @@ function stubFetch(impl) {
   return () => { global.fetch = real; };
 }
 
-test('llm prefers MiniMax when its key is set', async () => {
+const geminiOk = { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'From Gemini' }] } }] }) };
+const minimaxOk = { ok: true, json: async () => ({ choices: [{ message: { content: 'From MiniMax' } }] }) };
+
+function bothKeys() {
   process.env.MINIMAX_API_KEY = 'mk';
   process.env.GEMINI_API_KEY = 'gk';
+  return () => {
+    delete process.env.MINIMAX_API_KEY;
+    delete process.env.GEMINI_API_KEY;
+  };
+}
+
+test('llm defaults to Gemini first (free tier)', async () => {
+  const clean = bothKeys();
   const calls = [];
+  const restore = stubFetch(async (url) => {
+    calls.push(String(url));
+    return String(url).includes('googleapis') ? geminiOk : minimaxOk;
+  });
+  try {
+    assert.equal(await llm('hi', 100), 'From Gemini');
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].includes('googleapis'));
+  } finally { restore(); clean(); }
+});
+
+test('llm falls over to MiniMax when Gemini is out of quota', async () => {
+  const clean = bothKeys();
   const restore = stubFetch(async (url, opts) => {
-    calls.push(url);
-    assert.equal(JSON.parse(opts.body).model, 'MiniMax-M2');
+    if (String(url).includes('googleapis')) return { ok: false, status: 429 };
+    assert.equal(JSON.parse(opts.body).model, 'MiniMax-M3');
     assert.equal(opts.headers.authorization, 'Bearer mk');
-    return { ok: true, json: async () => ({ choices: [{ message: { content: 'From MiniMax' } }] }) };
+    return minimaxOk;
   });
   try {
     assert.equal(await llm('hi', 100), 'From MiniMax');
-    assert.equal(calls.length, 1);
-    assert.ok(calls[0].includes('api.minimax.io'));
-  } finally {
-    restore();
-    delete process.env.MINIMAX_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-  }
+  } finally { restore(); clean(); }
 });
 
-test('llm falls back to Gemini when MiniMax fails', async () => {
-  process.env.MINIMAX_API_KEY = 'mk';
-  process.env.GEMINI_API_KEY = 'gk';
-  const restore = stubFetch(async (url) =>
-    url.includes('minimax')
-      ? { ok: false, status: 401 }
-      : { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'From Gemini' }] } }] }) });
+test("prefer:'minimax' goes straight to MiniMax", async () => {
+  const clean = bothKeys();
+  const calls = [];
+  const restore = stubFetch(async (url) => {
+    calls.push(String(url));
+    return minimaxOk;
+  });
   try {
-    assert.equal(await llm('hi', 100), 'From Gemini');
-  } finally {
-    restore();
-    delete process.env.MINIMAX_API_KEY;
-    delete process.env.GEMINI_API_KEY;
-  }
+    assert.equal(await llm('hi', 100, 'minimax'), 'From MiniMax');
+    assert.equal(calls.length, 1);
+    assert.ok(calls[0].includes('api.minimax.io'));
+  } finally { restore(); clean(); }
+});
+
+test("prefer:'minimax' still falls back to Gemini if MiniMax errors", async () => {
+  const clean = bothKeys();
+  const restore = stubFetch(async (url) =>
+    String(url).includes('minimax') ? { ok: false, status: 401 } : geminiOk);
+  try {
+    assert.equal(await llm('hi', 100, 'minimax'), 'From Gemini');
+  } finally { restore(); clean(); }
 });
 
 test('makeTitle degrades to first words with no keys at all', async () => {
