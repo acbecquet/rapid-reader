@@ -33,11 +33,16 @@ export default async function handler(req, res) {
   const body = req.body || {};
 
   if (req.method === 'GET') {
-    // one MGET: backlog + the ephemeral live-highlight slot (see api/live.js)
-    const [items, live] = await getDocs([KEY_U, keyFor('rr:live', uid)], [[], null]);
-    return res.status(200).json({ items, live });
+    // one MGET: backlog + live-highlight slot + ⚡ capture flag (api/live.js)
+    const [items, live, flag] = await getDocs(
+      [KEY_U, keyFor('rr:live', uid), keyFor('rr:capture', uid)], [[], null, null]
+    );
+    return res.status(200).json({ items, live, captureOn: flag?.on !== false });
   }
   const items = await getDoc(KEY_U, []);
+
+  // ⚙ review-model setting: 'minimax' flips the Gemini-first default
+  const prefer = body.model === 'minimax' ? 'minimax' : undefined;
 
   if (req.method === 'POST') {
     let text = (body.text || '').trim();
@@ -49,7 +54,7 @@ export default async function handler(req, res) {
     if (/^https?:\/\/\S+$/i.test(text)) {
       try {
         url = url || text;
-        const page = await fetchReadable(text);
+        const page = await fetchReadable(text, prefer);
         text = page.markdown;
         title = title || page.title;
         digested = true;
@@ -74,7 +79,7 @@ export default async function handler(req, res) {
     const item = {
       id: crypto.randomUUID(),
       text,
-      title: title.slice(0, 100) || await makeTitle(text),
+      title: title.slice(0, 100) || await makeTitle(text, prefer),
       url,
       source,
       sourceType: SOURCE_TYPES.includes(body.sourceType)
@@ -95,8 +100,8 @@ export default async function handler(req, res) {
     const item = items.find((it) => it.id === body.id);
     if (!item) return res.status(404).json({ error: 'not found' });
     if (body.summarize) {
-      const summary = await makeSummary(item.text);
-      if (!summary) return res.status(502).json({ error: 'summary unavailable — set GEMINI_API_KEY' });
+      const summary = await makeSummary(item.text, prefer);
+      if (!summary) return res.status(502).json({ error: 'summary unavailable — set GEMINI_API_KEY or MINIMAX_API_KEY' });
       item.summary = summary;
     } else if ('summary' in body) {
       // agent-provided summary (e.g. via MCP — the connected model writes it)

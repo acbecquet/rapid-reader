@@ -35,7 +35,7 @@ export function pageTitle(html) {
 }
 
 // → { title, markdown }; throws when the page can't be fetched/read.
-export async function fetchReadable(url) {
+export async function fetchReadable(url, prefer) {
   const u = new URL(url);
   if (!/^https?:$/.test(u.protocol) || PRIVATE_HOST.test(u.hostname)) {
     throw new Error('unsupported url');
@@ -58,7 +58,8 @@ export async function fetchReadable(url) {
       'navigation, ads, cookie notices, related-article links, and ' +
       'comments. Preserve the substantive content and its order. ' +
       'Output only the markdown.\n\n' + text.slice(0, 30000),
-    8192
+    8192,
+    prefer
   );
   return { title: pageTitle(html), markdown: organized || text };
 }

@@ -1,12 +1,13 @@
 // LLM helpers: short sidebar titles and language summaries of code/diff-heavy
-// captures. Uses MiniMax (MINIMAX_API_KEY) when configured, falling back to
-// Gemini (GEMINI_API_KEY). Both degrade gracefully to null.
+// captures. Gemini (free tier) first; MiniMax picks up when Gemini is out of
+// quota or fails. prefer:'minimax' (the ⚙ review-model setting) flips the
+// order. Both degrade gracefully to null.
 
 async function minimax(prompt, maxOutputTokens) {
   const key = process.env.MINIMAX_API_KEY;
   if (!key) return null;
   const base = process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/v1';
-  const model = process.env.MINIMAX_MODEL || 'MiniMax-M2';
+  const model = process.env.MINIMAX_MODEL || 'MiniMax-M3';
   try {
     const res = await fetch(`${base}/chat/completions`, {
       method: 'POST',
@@ -56,8 +57,11 @@ async function gemini(prompt, maxOutputTokens) {
   }
 }
 
-export async function llm(prompt, maxOutputTokens) {
-  return (await minimax(prompt, maxOutputTokens)) ?? gemini(prompt, maxOutputTokens);
+export async function llm(prompt, maxOutputTokens, prefer) {
+  if (prefer === 'minimax') {
+    return (await minimax(prompt, maxOutputTokens)) ?? gemini(prompt, maxOutputTokens);
+  }
+  return (await gemini(prompt, maxOutputTokens)) ?? minimax(prompt, maxOutputTokens);
 }
 
 export function fallbackTitle(text) {
@@ -65,23 +69,25 @@ export function fallbackTitle(text) {
   return words.slice(0, 7).join(' ') + (words.length > 7 ? '…' : '');
 }
 
-export async function makeTitle(text) {
+export async function makeTitle(text, prefer) {
   const title = await llm(
     'Write a terse 3-7 word title for the following text. ' +
       'Reply with the title only, no quotes.\n\n' + text.slice(0, 4000),
-    1000
+    1000,
+    prefer
   );
   return title ? title.replace(/^["“']+|["”']+$/g, '').slice(0, 80) : fallbackTitle(text);
 }
 
 // Code/diff → readable review notes (the RSVP-able language around the work).
 // Returns null when no LLM is available so the caller can report it.
-export async function makeSummary(text) {
+export async function makeSummary(text, prefer) {
   return llm(
     'Summarize this code or diff into short review notes a developer can ' +
       'read quickly: what changed, any behavior changes, and what to ' +
       'double-check. Use markdown headings and bullet points with short ' +
       'plain sentences. Do not include code blocks.\n\n' + text.slice(0, 16000),
-    3000
+    3000,
+    prefer
   );
 }

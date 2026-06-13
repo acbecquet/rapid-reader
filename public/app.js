@@ -15,6 +15,7 @@ const DEFAULTS = {
   autoplay: true,
   keepOpen: false, // keep the backlog visible while reading
   transcript: true, // live transcript pane that follows the current word
+  reviewModel: 'gemini', // 'gemini' (free first, MiniMax on overflow) | 'minimax'
   token: '',
   account: null, // { name, email } when signed in with Google
 };
@@ -71,7 +72,8 @@ function setStatus(msg, err) {
 
 async function refresh() {
   try {
-    const { items: fresh, live } = await api('GET', 'items');
+    const { items: fresh, live, captureOn } = await api('GET', 'items');
+    setCaptureBtn(captureOn);
     const newest = knownIds && fresh.find((it) => !knownIds.has(it.id) && !it.readAt);
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
@@ -465,6 +467,22 @@ function flushSession() {
 
 // ---------- live highlight (ephemeral — never in the backlog) ----------
 let liveSeen = 0;
+let captureState = true; // the ⚡ server-side gate (rr:capture flag)
+
+function setCaptureBtn(on) {
+  captureState = on !== false;
+  $('capture-btn').classList.toggle('on', captureState);
+}
+
+$('capture-btn').onclick = async () => {
+  try {
+    const { captureOn } = await api('PATCH', 'live', { body: { on: !captureState } });
+    setCaptureBtn(captureOn);
+    toast(captureOn ? '⚡ live capture on' : 'live capture off');
+  } catch {
+    toast('Could not toggle — check connection');
+  }
+};
 
 function maybeOpenLive(live) {
   if (!live?.ts || live.ts === liveSeen || !live.text) return;
@@ -604,7 +622,7 @@ $('summarize-btn').onclick = async () => {
   btn.disabled = true;
   btn.textContent = 'summarizing…';
   try {
-    const { item } = await api('PATCH', 'items', { body: { id: cur.item.id, summarize: true } });
+    const { item } = await api('PATCH', 'items', { body: { id: cur.item.id, summarize: true, model: settings.reviewModel } });
     cur.item.summary = item.summary;
     toast('Summary ready — playing');
     openItem(cur.item);
@@ -788,6 +806,7 @@ function fillSettingsForm() {
   $('s-wpm').value = settings.wpm;
   $('s-wpm-num').value = settings.wpm;
   $('s-mode').value = settings.mode;
+  $('s-model').value = settings.reviewModel;
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
   $('s-token').value = settings.token;
@@ -814,6 +833,7 @@ bind('s-bg', 'bg');
 $('s-wpm').oninput = (e) => setWpm(Number(e.target.value));
 $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
 bind('s-mode', 'mode');
+bind('s-model', 'reviewModel');
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
@@ -831,7 +851,7 @@ $('add-save').onclick = async () => {
   const isUrl = /^https?:\/\/\S+$/i.test(text);
   if (isUrl) toast('Fetching page…');
   try {
-    await api('POST', 'items', { body: { text, sourceType: $('add-source').value } });
+    await api('POST', 'items', { body: { text, sourceType: $('add-source').value, model: settings.reviewModel } });
     toast(isUrl ? 'Page added to backlog' : 'Added to backlog');
     await refresh();
   } catch (e) {

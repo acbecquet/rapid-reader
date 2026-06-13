@@ -43,3 +43,27 @@ test('live slot: set, read via items poll, overwrite, clear', async () => {
   r = await call(liveHandler, 'PUT');
   assert.equal(r.code, 405);
 });
+
+test('⚡ toggle gates live captures server-side', async () => {
+  // default: on
+  let r = await call(itemsHandler, 'GET');
+  assert.equal(r.body.captureOn, true);
+
+  // off: POSTs are accepted but dropped, pending capture cleared
+  await call(liveHandler, 'POST', { text: 'Pending capture before the switch.' });
+  r = await call(liveHandler, 'PATCH', { on: false });
+  assert.equal(r.body.captureOn, false);
+  r = await call(liveHandler, 'POST', { text: 'Copied while capture is off.' });
+  assert.equal(r.code, 200);
+  assert.equal(r.body.ignored, true);
+  r = await call(itemsHandler, 'GET');
+  assert.equal(r.body.live, null);
+  assert.equal(r.body.captureOn, false);
+
+  // back on: captures flow again
+  await call(liveHandler, 'PATCH', { on: true });
+  await call(liveHandler, 'POST', { text: 'Copied after re-enabling.' });
+  r = await call(itemsHandler, 'GET');
+  assert.equal(r.body.live.text, 'Copied after re-enabling.');
+  await call(liveHandler, 'DELETE');
+});

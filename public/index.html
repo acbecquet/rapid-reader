@@ -16,6 +16,7 @@
     <div class="bar">
       <span class="brand">Rapid Reader</span>
       <span id="status">connecting…</span>
+      <button id="capture-btn" class="icon-btn" title="Live capture On/Off — accept highlights from the clipboard watcher and extension live mode">⚡</button>
       <button id="add-btn" class="icon-btn" title="Add text manually">+</button>
       <button id="stats-btn" class="icon-btn" title="Reading stats">∑</button>
       <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
@@ -90,6 +91,12 @@
         <select id="s-mode">
           <option value="standard">Standard — constant WPM</option>
           <option value="build">Build — 80 WPM, +20 every 15s up to target</option>
+        </select>
+      </label>
+      <label>Review model
+        <select id="s-model">
+          <option value="gemini">Gemini 2.5 Lite — free tier first (default)</option>
+          <option value="minimax">MiniMax M3 — go straight there</option>
         </select>
       </label>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play new captures</label>
