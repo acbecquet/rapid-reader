@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     const sourceType = SOURCE_TYPES.includes(body.sourceType)
       ? body.sourceType : (digested ? 'article' : defaultSourceType(url));
 
-    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group, bookId: body.bookId, chapterIndex: body.chapterIndex });
+    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group, bookId: body.bookId, chapterIndex: body.chapterIndex, ts: body.ts });
     if (out.ignored) return res.status(200).json({ ignored: true });
     return res.status(out.updated ? 200 : 201).json({ item: out.item });
   }

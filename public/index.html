@@ -14,6 +14,10 @@
 <div id="app">
   <header id="top">
     <div class="bar">
+      <button id="mcp-init" title="Connect this computer — pull in Claude/Codex sessions and highlights">⌁ set up</button>
+      <span id="mcp-status" title="Whether agent capture is connected to your queue">
+        <span id="mcp-dot" class="off"></span><span id="mcp-label">agents off</span>
+      </span>
       <span class="brand">Rapid Reader</span>
       <span id="status">connecting…</span>
       <div id="tools">
@@ -164,6 +168,27 @@
       <h2>Reading stats</h2>
       <div id="stats-body">loading…</div>
       <div class="row right"><button id="stats-close" class="btn">Done</button></div>
+    </div>
+  </div>
+
+  <div id="mcpmodal" class="modal" hidden>
+    <div class="modal-card wide">
+      <h2>Connect this computer</h2>
+      <p class="hint">Pull your Claude Code &amp; Codex sessions and your highlights into Rapid Reader. For your security a web page can't run anything on your machine — so download the one-click script (recommended) or paste the command into a terminal once. It targets <b id="mcp-origin"></b> with your own access token.</p>
+      <label>Your system
+        <select id="mcp-os">
+          <option value="win">Windows</option>
+          <option value="mac">macOS</option>
+          <option value="linux">Linux</option>
+        </select>
+      </label>
+      <pre id="mcp-cmd"></pre>
+      <div class="row">
+        <button id="mcp-download" class="btn">⬇ Download setup script</button>
+        <button id="mcp-copy" class="btn ghost">Copy command</button>
+      </div>
+      <p class="hint" id="mcp-note"></p>
+      <div class="row right"><button id="mcp-modal-close" class="btn ghost">Close</button></div>
     </div>
   </div>
 

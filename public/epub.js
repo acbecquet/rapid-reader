@@ -56,7 +56,10 @@ export function chapterText(xhtml) {
   s = body ? body[1] : s;
   s = s
     .replace(/<(script|style|svg)\b[\s\S]*?<\/\1>/gi, '')
-    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, l, t) => `\n\n${'#'.repeat(+l)} ${t.replace(/<[^>]+>/g, ' ')}\n\n`)
+    .replace(/<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, (_, l, t) => {
+      const txt = t.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return txt ? `\n\n${'#'.repeat(+l)} ${txt}\n\n` : '\n\n'; // skip empty headings
+    })
     .replace(/<li[^>]*>/gi, '\n- ')
     .replace(/<\/(p|div|li|tr|blockquote|section)>/gi, '\n')
     .replace(/<(br|hr)[^>]*\/?>/gi, '\n')
@@ -67,11 +70,13 @@ export function chapterText(xhtml) {
     .trim();
 }
 
-function chapterTitle(xhtml, text, n) {
+// The chapter's heading text, or '' when it has none (a numbered chapter whose
+// number is an image/glyph). parseEpub then assigns a running "Chapter N".
+function chapterTitle(xhtml) {
   const h = xhtml.match(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i)
     || xhtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   const t = h && decodeEntities(h[1].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
-  return t || text.split('\n')[0].slice(0, 60) || `Chapter ${n}`;
+  return t && /[\p{L}\p{N}]/u.test(t) ? t : '';
 }
 
 function attr(tag, name) {
@@ -110,6 +115,7 @@ export async function parseEpub(buf) {
     manifest.set(attr(tag, 'id'), attr(tag, 'href'));
   }
   const chapters = [];
+  let num = 0; // running count of unnamed/numbered chapters → "Chapter N"
   for (const tag of opf.match(/<itemref\b[^>]*>/gi) || []) {
     if (attr(tag, 'linear') === 'no') continue;
     const href = manifest.get(attr(tag, 'idref'));
@@ -117,7 +123,10 @@ export async function parseEpub(buf) {
     const xhtml = read(resolve(opfDir, href));
     const text = chapterText(xhtml);
     if (text.split(/\s+/).length < 5) continue; // covers, blank pages
-    chapters.push({ title: chapterTitle(xhtml, text, chapters.length + 1), text });
+    let title = chapterTitle(xhtml);
+    if (/^\d+$/.test(title)) { num = Number(title); title = `Chapter ${title}`; }
+    else if (!title) title = `Chapter ${++num}`;
+    chapters.push({ title, text });
   }
   if (!chapters.length) throw new Error('no readable chapters');
   return { title: meta('title') || 'Untitled book', author: meta('creator'), chapters };

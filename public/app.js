@@ -94,6 +94,7 @@ async function refresh() {
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
     renderColumns();
+    updateMcp();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
     // an upserted item (e.g. a live Claude session) refreshes the open reader
     const open = cur && !cur.item.live && fresh.find((it) => it.id === cur.item.id);
@@ -188,12 +189,18 @@ function toggleGroup(gkey) {
 }
 
 function renderColumns() {
-  const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group]))
+  const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group, i.createdAt, i.bookmarkAt]))
     + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',');
   if (key === lastRender) return;
   lastRender = key;
 
   const wrap = $('columns');
+  // preserve each column's scroll position across the rebuild
+  const scroll = {};
+  for (const el of wrap.querySelectorAll('.col')) {
+    const b = el.querySelector('.col-body');
+    if (el.dataset.col && b) scroll[el.dataset.col] = b.scrollTop;
+  }
   wrap.textContent = '';
   const cols = prefs?.columns || [];
   const visible = items.filter((it) => !it.archivedAt);
@@ -216,6 +223,7 @@ function renderColumns() {
     const list = byCol[col.id] || [];
     const c = document.createElement('div');
     c.className = 'col';
+    c.dataset.col = col.id;
     const h = document.createElement('div');
     h.className = 'col-h';
     h.innerHTML = `<span class="col-i">${icon(col.icon)}</span><span class="col-n">${col.name}</span><span class="col-c">${list.length}</span>`;
@@ -226,25 +234,38 @@ function renderColumns() {
     c.append(body);
     wrap.append(c);
   }
+  // restore scroll once the columns are laid out in the DOM
+  for (const el of wrap.querySelectorAll('.col')) {
+    const b = el.querySelector('.col-body');
+    if (b && scroll[el.dataset.col] != null) b.scrollTop = scroll[el.dataset.col];
+  }
   renderSelbar();
 }
 
 // Within a column, items with a `group` (e.g. a Claude project folder) render
 // under collapsible sub-headers — like the Claude Code sidebar. Ungrouped
 // items render flat at the top.
-function renderColBody(body, col, list) {
-  const ungrouped = list.filter((it) => !it.group);
-  for (const it of ungrouped) body.append(itemRow(it, col.id, list));
+const byNewest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
 
+function renderColBody(body, col, list) {
+  const ungrouped = list.filter((it) => !it.group).sort(byNewest);
+  for (const it of ungrouped) body.append(itemRow(it, col.id, ungrouped));
+
+  // groups ordered by their most recent item (newest project on top)
   const groups = new Map();
   for (const it of list) if (it.group) {
     if (!groups.has(it.group)) groups.set(it.group, []);
     groups.get(it.group).push(it);
   }
-  for (const [name, gItems] of groups) {
+  const ordered = [...groups.entries()].sort((a, b) => byNewest(
+    a[1].reduce((m, x) => (x.createdAt > (m.createdAt || 0) ? x : m), {}),
+    b[1].reduce((m, x) => (x.createdAt > (m.createdAt || 0) ? x : m), {}),
+  ));
+  for (const [name, gItems] of ordered) {
     // a book group: chapters in reading order, with a bookmark on the current one
     const isBook = gItems.some((it) => it.bookId);
     if (isBook) gItems.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
+    else gItems.sort(byNewest); // agents: most recent session on top
     const bm = isBook
       ? gItems.reduce((a, b) => ((b.bookmarkAt || 0) > (a?.bookmarkAt || 0) ? b : a), null)
       : null;
@@ -935,7 +956,7 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
     if (e.key === 'Escape') $(open).hidden = true;
@@ -1049,6 +1070,93 @@ $('add-epub').onchange = async (e) => {
     toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
 };
+
+// ---------- connect this computer (agent capture / MCP) ----------
+// The indicator shows whether agent data is reaching your queue. A browser
+// can't run a local command or inspect your machine, so the button hands you
+// a personalized one-click script (and a copy-paste command) instead.
+function detectOS() {
+  const p = (navigator.userAgent + ' ' + (navigator.platform || '')).toLowerCase();
+  if (p.includes('win')) return 'win';
+  if (p.includes('mac') || p.includes('iphone') || p.includes('ipad')) return 'mac';
+  return 'linux';
+}
+
+function mcpParts() {
+  const url = location.origin;
+  const tok = settings.token || '';
+  return { url, tok };
+}
+
+function mcpScript(os) {
+  const { url, tok } = mcpParts();
+  const repo = 'https://github.com/acbecquet/rapid-reader';
+  if (os === 'win') {
+    return ['@echo off', 'setlocal', 'set "DIR=%USERPROFILE%\\rapid-reader"',
+      'where git >nul 2>nul || (echo Install Git from https://git-scm.com ^& pause ^& exit /b 1)',
+      'where node >nul 2>nul || (echo Install Node.js from https://nodejs.org ^& pause ^& exit /b 1)',
+      `if exist "%DIR%\\.git" ( git -C "%DIR%" pull --ff-only ) else ( git clone ${repo} "%DIR%" )`,
+      'pushd "%DIR%\\mcp" & call npm install --no-audit --no-fund & popd',
+      `where claude >nul 2>nul && call claude mcp add rapid-reader -e RAPID_READER_URL=${url}${tok ? ' -e RAPID_READER_TOKEN=' + tok : ''} -- node "%DIR%\\mcp\\server.mjs"`,
+      `node "%DIR%\\hooks\\install.mjs" --url ${url}${tok ? ' --token ' + tok : ''}`,
+      `node "%DIR%\\hooks\\sync.mjs" --days 30`,
+      'echo Done. Double-click sync-agents.cmd in %DIR% for live updates.', 'pause', ''].join('\r\n');
+  }
+  return ['#!/bin/sh', 'set -e', 'DIR="$HOME/rapid-reader"',
+    "command -v git >/dev/null || { echo 'Install git first'; exit 1; }",
+    "command -v node >/dev/null || { echo 'Install Node.js: https://nodejs.org'; exit 1; }",
+    `[ -d "$DIR/.git" ] && git -C "$DIR" pull --ff-only || git clone ${repo} "$DIR"`,
+    'npm install --prefix "$DIR/mcp" --no-audit --no-fund',
+    `command -v claude >/dev/null && claude mcp add rapid-reader -e RAPID_READER_URL=${url}${tok ? ' -e RAPID_READER_TOKEN=' + tok : ''} -- node "$DIR/mcp/server.mjs"`,
+    `node "$DIR/hooks/install.mjs" --url ${url}${tok ? ' --token ' + tok : ''}`,
+    `node "$DIR/hooks/sync.mjs" --days 30`,
+    "echo 'Done. Double-click sync-agents.command for live updates.'", ''].join('\n');
+}
+
+function mcpOneLiner(os) {
+  const { url, tok } = mcpParts();
+  const t = tok ? ` --token ${tok}` : '';
+  if (os === 'win') {
+    return `git clone https://github.com/acbecquet/rapid-reader "%USERPROFILE%\\rapid-reader" & cd /d "%USERPROFILE%\\rapid-reader" & node hooks\\install.mjs --url ${url}${t} & node hooks\\sync.mjs --days 30`;
+  }
+  return `git clone https://github.com/acbecquet/rapid-reader ~/rapid-reader 2>/dev/null; cd ~/rapid-reader && node hooks/install.mjs --url ${url}${t} && node hooks/sync.mjs --days 30`;
+}
+
+function renderMcpModal() {
+  const os = $('mcp-os').value;
+  $('mcp-cmd').textContent = mcpOneLiner(os);
+  $('mcp-origin').textContent = location.origin;
+  $('mcp-note').textContent = settings.token
+    ? 'The script uses your own access token — it stays on your computer.'
+    : 'Tip: sign in or set your token in ⚙ first, so capture lands in your private queue.';
+}
+
+$('mcp-init').onclick = () => { $('mcp-os').value = detectOS(); renderMcpModal(); $('mcpmodal').hidden = false; };
+$('mcp-os').onchange = renderMcpModal;
+$('mcp-modal-close').onclick = () => { $('mcpmodal').hidden = true; };
+$('mcpmodal').onclick = (e) => { if (e.target === $('mcpmodal')) $('mcpmodal').hidden = true; };
+$('mcp-copy').onclick = async () => {
+  try { await navigator.clipboard.writeText(mcpOneLiner($('mcp-os').value)); toast('Command copied — paste it into a terminal'); }
+  catch { toast('Copy failed'); }
+};
+$('mcp-download').onclick = () => {
+  const os = $('mcp-os').value;
+  const name = os === 'win' ? 'setup-rapid-reader.cmd' : 'setup-rapid-reader.command';
+  const blob = new Blob([mcpScript(os)], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast(os === 'win' ? 'Downloaded — double-click setup-rapid-reader.cmd' : 'Downloaded — right-click → Open the .command file');
+};
+
+// green when agent sessions are reaching this queue, red otherwise
+function updateMcp() {
+  const on = items.some((it) => it.sourceType === 'claude_code' || it.sourceType === 'codex');
+  $('mcp-dot').className = on ? 'on' : 'off';
+  $('mcp-label').textContent = on ? 'agents connected' : 'agents off';
+}
 
 // ---------- toast ----------
 let toastTimer;

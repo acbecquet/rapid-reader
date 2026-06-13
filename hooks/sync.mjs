@@ -63,6 +63,7 @@ async function syncFile(src, file, { url, token }) {
   // the project from the transcript's own cwd (handles "/" in names + Codex)
   const cwd = cwdOf(jsonl);
   const group = cwd ? basename(cwd.replace(/[\\/]+$/, '')) : src.group(file);
+  let ts; try { ts = statSync(file).mtimeMs; } catch {}
   const payload = buildPayload({
     jsonl,
     sessionId: src.type + ':' + basename(file).replace(/\.jsonl$/, ''),
@@ -70,6 +71,7 @@ async function syncFile(src, file, { url, token }) {
     sourceType: src.type,
   });
   if (!payload) return false;
+  payload.ts = ts; // real session time → newest sorts to the top
   try {
     await fetch(url + '/api/items', {
       method: 'POST',

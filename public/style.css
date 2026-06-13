@@ -40,6 +40,16 @@ body {
   flex: none;
 }
 .brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; }
+#mcp-init {
+  background: none; border: 1px solid var(--accent); color: var(--fg);
+  font-size: 10px; border-radius: 99px; padding: 2px 9px; cursor: pointer; white-space: nowrap;
+}
+#mcp-init:hover { background: #2a2a35; }
+#mcp-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--dim); white-space: nowrap; }
+#mcp-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a3a48; flex: none; }
+#mcp-dot.on { background: #2e9e5b; box-shadow: 0 0 6px #2e9e5b99; }
+#mcp-dot.off { background: #c0473e; }
+#mcp-cmd { background: #0c0c10; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font-size: 10.5px; white-space: pre-wrap; word-break: break-all; max-height: 160px; overflow: auto; }
 #tools { display: flex; align-items: center; gap: 2px; }
 #tools .sources { display: flex; align-items: center; gap: 1px; margin: 0 2px; padding: 0 4px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 .icon-btn svg { display: block; width: 16px; height: 16px; }
