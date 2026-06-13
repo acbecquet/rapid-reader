@@ -16,6 +16,7 @@ import { gate, keyFor } from './_lib/auth.js';
 import { mergePrefs } from './_lib/prefs.js';
 import { fetchReadable } from './_lib/readable.js';
 import { addItem, SOURCE_TYPES } from './_lib/ingest.js';
+import { makeTitle } from './_lib/title.js';
 
 const KEY = 'rr:items';
 
@@ -84,6 +85,13 @@ export default async function handler(req, res) {
   if (req.method === 'PATCH') {
     const item = items.find((it) => it.id === body.id);
     if (!item) return res.status(404).json({ error: 'not found' });
+    // AI title self-heal: re-derive a title from the body (LLM, else first
+    // words). The frontend asks for this only when a title looks wrong.
+    if (body.retitle) {
+      const text = await getBody(uid, item.id, item.bodyUrl);
+      const t = await makeTitle(text, body.model === 'minimax' ? 'minimax' : undefined);
+      if (t) item.title = t.slice(0, 120);
+    }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;
     if ('progress' in body) item.progress = Math.max(0, Number(body.progress) || 0);
