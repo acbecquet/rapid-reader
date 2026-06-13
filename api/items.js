@@ -90,7 +90,17 @@ export default async function handler(req, res) {
     if (body.retitle) {
       const text = await getBody(uid, item.id, item.bodyUrl);
       const t = await makeTitle(text, body.model === 'minimax' ? 'minimax' : undefined);
-      if (t) item.title = t.slice(0, 120);
+      if (t) {
+        // book chapters keep their "Chapter N" number prefix; the AI fills in
+        // only the descriptive part (and never re-echoes the number).
+        const pre = body.book && (item.title.match(/^chapter\s+\d+/i) || [])[0];
+        if (pre) {
+          const clean = t.replace(/^chapter\s+[0-9ivxlcdm]+\s*[·:.\-—]?\s*/i, '').trim();
+          item.title = `${pre}${clean ? ' · ' + clean : ''}`.slice(0, 120);
+        } else {
+          item.title = t.slice(0, 120);
+        }
+      }
     }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;

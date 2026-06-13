@@ -20,6 +20,18 @@ body {
 }
 #app { display: flex; flex-direction: column; height: 100%; }
 
+/* ---------- scrollbars (match the gray/black/red theme) ---------- */
+* { scrollbar-width: thin; scrollbar-color: #34343f var(--panel); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--panel); }
+::-webkit-scrollbar-thumb {
+  background: #34343f;
+  border: 2px solid var(--panel);
+  border-radius: 99px;
+}
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { background: var(--accent); }
+::-webkit-scrollbar-corner { background: var(--panel); }
+
 /* ---------- top backlog panel ---------- */
 #top {
   background: var(--panel);
@@ -129,6 +141,21 @@ body {
 .col-h .col-i svg { width: 13px; height: 13px; }
 .col-h .col-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-h .col-c { opacity: .7; }
+.col-h .agent-pick {
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font: inherit;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 1px 3px;
+  margin: -2px 0;
+  max-width: 100%;
+  cursor: pointer;
+}
+.col-h .agent-pick:hover { border-color: var(--accent); }
 .col-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 0 6px; font-size: 11px; }
 .col-body .group {
   display: flex;
