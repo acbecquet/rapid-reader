@@ -16,6 +16,6 @@ claude mcp add rapid-reader \
   -e RAPID_READER_TOKEN=dghhdsaw87665432wwdghy456dfjjout3 \
   -- node "$DIR/mcp/server.mjs"
 
-node "$DIR/hooks/install.mjs"
+node "$DIR/hooks/install.mjs" --url https://rapid-reader-pi.vercel.app --token dghhdsaw87665432wwdghy456dfjjout3
 
 echo 'Done. Restart Claude Code — its responses now stream to your queue.'

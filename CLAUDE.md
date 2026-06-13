@@ -12,18 +12,26 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
     code-heaviness detection). Unit tested.
   - `epub.js` — pure EPUB parser (zip via DecompressionStream, chapters→markdown).
     Unit tested in Node.
-  - `app.js` — DOM wiring, player loop, polling, settings, filters, stats, sessions.
-- `api/items.js` — backlog endpoint (GET/POST/PATCH/DELETE), bearer-token auth.
-- `api/books.js` — book text storage; backlog holds a light stub with `bookId` so
-  the 4s items poll never carries book-sized payloads.
+  - `icons.js` — inline-SVG glyphs for the header action buttons and source toggles.
+  - `app.js` — DOM wiring, player loop, polling, settings, 5-column backlog,
+    multiselect, source toggles, stats, sessions.
+- `api/items.js` — backlog endpoint. GET returns lean index stubs + live + prefs;
+  GET `?id` loads one body to read; POST/PATCH/DELETE. No AI on the hot path.
+- `api/prefs.js` — per-user ⚡ capture gate, source on/off toggles, column layout.
+- `api/health.js` — storage probe ({ redis, blob, persistent }); open it to see
+  whether the backlog will persist.
+- `api/telegram.js`, `api/email.js` — webhook ingestion (shared secret) → owner queue.
 - `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
-- `api/_lib/` — storage (Upstash Redis, in-memory fallback), shared auth gate,
-  LLM title + code-summary generation (MiniMax first, Gemini fallback).
+- `api/_lib/` — `store.js` (Redis lean index + Vercel Blob bodies, in-memory dev
+  fallback), `ingest.js` (shared addItem: gate→putBody→index), `prefs.js`
+  (defaults + source→column routing), `auth.js` gate, `readable.js` (URL→text,
+  no AI), `title.js` (LLM helper, kept but off the hot path).
 - `extension/` — MV3 browser extension that captures highlighted text and POSTs it.
 - `mcp/` — stdio MCP server (own package.json) so coding agents can push items.
 - `hooks/` — Claude Code Stop hook: pushes each session's transcript to the
   backlog (upsert per `sessionId`); `install.mjs` wires it into
   `~/.claude/settings.json`.
+- `capture-anywhere.cmd`/`.command` — clipboard watcher → live highlight (any app).
 - `dev-server.mjs` — local dev: serves `public/` and mounts the api handlers with the
   in-memory store. `npm run dev`, then http://localhost:3000.
 - `test/` — `node --test` over the pure logic and the API handlers.
@@ -56,17 +64,23 @@ optional decoration; apply them to every change.
   reconsider the change.
 - `rsvp.js`, `parse.js`, and `epub.js` stay pure (no DOM, no fetch) so they stay
   testable in Node.
-- Item schema: `{ id, text, title, url, source, sourceType, createdAt, readAt,
-  progress, archivedAt, summary }`; book items additionally carry `bookId` and
-  `words` (their `text` is a stub — the content lives in the book doc); Claude
-  session items carry `sessionId` (POSTs with the same `sessionId` upsert).
-- Storage is JSON documents in Redis, namespaced per user via
-  `keyFor(base, uid)`: `rr:items[:uid]` newest-first capped, `rr:stats[:uid]`
-  daily aggregates, `rr:live[:uid]` ephemeral slot, `rr:book:<id>[:uid]` book
-  text (deleted when its item is deleted). Identity is a stateless
+- Two-tier storage so the 4s poll stays tiny at any size. The Redis **index**
+  holds lean stubs: `{ id, title, sourceType, url, source, createdAt, readAt,
+  progress, archivedAt, words, bodyUrl, sessionId? }` — never the text. Each
+  item's full text lives in **Vercel Blob** at `bodyUrl` (in-memory in dev),
+  loaded only when an item is opened (`GET /api/items?id=`). Books are just
+  items with `sourceType:'book'`; Claude sessions carry `sessionId` (same
+  `sessionId` upserts the body + bumps to top). 2GB/person lives in Blob.
+- Redis keys via `keyFor(base, uid)`: `rr:items[:uid]` lean index (cap 5000),
+  `rr:prefs[:uid]` (capture gate + source toggles + columns), `rr:stats[:uid]`
+  daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless
   HMAC session token (Google sign-in via `api/login.js`, or the owner/dev
-  token → uid `owner` on the legacy un-namespaced keys). No passwords, no
-  server-side sessions, no billing machinery.
-- Never RSVP raw code or raw diffs: parse them out or summarize them into
-  language first. Raw source stays accessible.
+  token → uid `owner`). No passwords, no server-side sessions, no billing.
+- **Responsiveness first: no AI on the capture/open path.** Titles are instant
+  first-words; URLs are stripped to text (no LLM reorg); code is shown raw in
+  the transcript. `title.js` (MiniMax/Gemini) stays for optional future use,
+  not the hot path. Never RSVP raw code word-by-word — `parse.js` still turns
+  code blocks into placeholders; the transcript shows the real code.
 - Stats stay aggregate-only: no captured text in `rr:stats`, ever.
+- New env: `BLOB_READ_WRITE_TOKEN` (Vercel Blob), `TELEGRAM_WEBHOOK_SECRET`,
+  `EMAIL_WEBHOOK_SECRET`. `/api/health` reports whether Redis/Blob are wired.

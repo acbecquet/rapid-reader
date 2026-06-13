@@ -9,6 +9,7 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@upstash/redis": "^1.34.0"
+    "@upstash/redis": "^1.34.0",
+    "@vercel/blob": "^0.27.0"
   }
 }

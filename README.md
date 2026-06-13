@@ -123,20 +123,39 @@ an agent session — it uses your `GEMINI_API_KEY`.
 
 1. Import this repo at [vercel.com/new](https://vercel.com/new). Framework
    preset: **Other**. No build command needed.
-2. In the project, open **Storage → Create Database → Upstash Redis** (free
-   tier) and connect it. This injects the Redis env vars automatically.
+2. **Storage (required for persistence).** Open **Storage → Create Database**:
+   - **Upstash Redis** (free) holds the lean per-user index. This injects the
+     Redis env vars automatically. Without it the backlog is in-memory and
+     resets — check **`/api/health`**, which reports `redis`/`blob`/`persistent`.
+   - **Blob** (free) holds each item's full text (so a person can keep gigabytes
+     without bloating the poll). Connecting it injects `BLOB_READ_WRITE_TOKEN`.
 3. In **Settings → Environment Variables**, add:
    - `RAPID_READER_TOKEN` — any long random string; this is your private key.
-   - `GEMINI_API_KEY` *(optional)* — used first (free tier) for titles, code
-     summaries, and page reorganization; key from
-     [aistudio.google.com](https://aistudio.google.com/apikey).
-     (`GEMINI_MODEL` overrides the default `gemini-2.5-flash-lite`.)
-   - `MINIMAX_API_KEY` *(optional)* — takes over when Gemini is out of quota
-     or fails (`MINIMAX_MODEL` overrides the default `MiniMax-M3`;
-     `MINIMAX_BASE_URL` overrides `https://api.minimax.io/v1`). The in-app
-     **Review model** setting can also send everything straight to MiniMax.
+   - `TELEGRAM_WEBHOOK_SECRET`, `EMAIL_WEBHOOK_SECRET` *(optional)* — random
+     strings that authorize the Telegram/email ingestion endpoints (below).
+   - `GEMINI_API_KEY` / `MINIMAX_API_KEY` *(optional)* — only used by the
+     `title.js` helper; capture itself does no AI, so these are not required.
 4. Redeploy. Open the app and visit `https://your-app.vercel.app/?token=YOURTOKEN`
    once per device to self-configure.
+
+## Sources (header toggles)
+
+The header has an on/off toggle per source: ⚡ live highlight, ＋ paste/URL,
+📖 EPUB, then Claude / Codex / Copilot / Docs / Email / Telegram. Turning one
+off drops its inflow. Items land in five customizable columns (Agents, Books,
+Email, News, General — edit with the ▦ button). Connect a source:
+
+- **Claude Code / Codex / Copilot** — run `node hooks/install.mjs` (the
+  `setup-mcp` script does it) to push each session transcript; or any agent
+  can POST `{ text, sourceType }` to `/api/items`.
+- **Telegram** — create a bot with @BotFather, then set its webhook to
+  `https://your-app.vercel.app/api/telegram?secret=$TELEGRAM_WEBHOOK_SECRET`
+  (or send the secret as the `X-Telegram-Bot-Api-Secret-Token` header).
+  Messages you send the bot appear in the Telegram column.
+- **Email** — point an inbound-email webhook (Cloudflare Email Worker,
+  Mailgun/Postmark, or an email MCP) at
+  `https://your-app.vercel.app/api/email?secret=$EMAIL_WEBHOOK_SECRET` with a
+  JSON body of `{ subject, from, text }`.
 
 ## Multi-user: Google sign-in (optional)
 

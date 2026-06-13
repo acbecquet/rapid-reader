@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
 import { parseEpub, compileBook, chapterText } from '../public/epub.js';
-import booksHandler from '../api/books.js';
 import itemsHandler from '../api/items.js';
 
 // ---------- minimal zip writer (CRCs unset — the parser ignores them) ----------
@@ -124,33 +123,25 @@ function call(handler, method, { body, query } = {}) {
   });
 }
 
-test('books API: POST stores the book and a stub item; items DELETE cascades', async () => {
-  const text = '# Setting Sail\n\nThe crew left the harbor at dawn.';
-  let r = await call(booksHandler, 'POST', { body: { title: 'Test Voyage', author: 'A. Writer', text } });
+test('a book is a normal item (sourceType book) with its text in the body store', async () => {
+  const text = compileBook(await parseEpub(makeEpub()));
+  let r = await call(itemsHandler, 'POST', {
+    body: { title: 'Test Voyage — A. Writer', sourceType: 'book', text, words: text.split(/\s+/).length },
+  });
   assert.equal(r.code, 201);
   const item = r.body.item;
   assert.equal(item.sourceType, 'book');
-  assert.equal(item.title, 'Test Voyage');
-  assert.ok(item.bookId);
-  assert.equal(item.words, text.split(/\s+/).length);
-  assert.ok(item.text.length < 100); // stub, not the book
+  assert.equal(item.title, 'Test Voyage — A. Writer');
+  assert.equal('text' in item, false); // lean stub
+  assert.ok(item.words > 5);
 
-  // the stub is in the backlog, the text is fetchable by bookId
-  r = await call(itemsHandler, 'GET');
-  assert.equal(r.body.items[0].id, item.id);
-  r = await call(booksHandler, 'GET', { query: { id: item.bookId } });
-  assert.equal(r.body.book.text, text);
+  // the full text loads by id and round-trips the chapters
+  r = await call(itemsHandler, 'GET', { query: { id: item.id } });
+  assert.ok(r.body.text.includes('# Setting Sail'));
+  assert.ok(r.body.text.includes('# The Storm'));
 
-  // deleting the item removes the book doc too
   r = await call(itemsHandler, 'DELETE', { body: { id: item.id } });
   assert.equal(r.code, 200);
-  r = await call(booksHandler, 'GET', { query: { id: item.bookId } });
+  r = await call(itemsHandler, 'GET', { query: { id: item.id } });
   assert.equal(r.code, 404);
-});
-
-test('books API validates input', async () => {
-  let r = await call(booksHandler, 'POST', { body: { title: 'No text' } });
-  assert.equal(r.code, 400);
-  r = await call(booksHandler, 'GET');
-  assert.equal(r.code, 400);
 });

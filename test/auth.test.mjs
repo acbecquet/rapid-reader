@@ -78,7 +78,8 @@ test('google sign-in: verify, mint session, namespace data per user', async () =
     r = await login(makeIdToken({ sub: 'owner-sub', email: 'Owner@Example.com' }));
     const ownerSession = r.body.token;
     r = await itemsAs(ownerSession);
-    assert.equal(r.body.items[0].text, 'Owner legacy item');
+    assert.equal(r.body.items[0].title.length > 0, true);
+    assert.equal(r.body.items[0].words, 3);
 
     // cleanup
     for (const t of [alice, ownerSession]) {
@@ -138,12 +139,13 @@ test('PUBLIC_DEMO: tokenless visitors share the dev-token queue', async () => {
     // visitor (no token) can use the app
     let r = await call(itemsHandler, 'POST', { body: { text: 'Demo visitor item' } });
     assert.equal(r.code, 201);
+    const demoId = r.body.item.id;
     r = await call(itemsHandler, 'GET');
-    assert.equal(r.body.items[0].text, 'Demo visitor item');
+    assert.equal(r.body.items[0].id, demoId);
 
     // the dev token sees the same queue (family/demo phase)
     r = await itemsAs('dev-secret');
-    assert.equal(r.body.items[0].text, 'Demo visitor item');
+    assert.equal(r.body.items[0].id, demoId);
 
     // cleanup, then verify the off-switch
     const { body } = await call(itemsHandler, 'GET');
