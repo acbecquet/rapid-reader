@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     const sourceType = SOURCE_TYPES.includes(body.sourceType)
       ? body.sourceType : (digested ? 'article' : defaultSourceType(url));
 
-    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group });
+    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group, bookId: body.bookId, chapterIndex: body.chapterIndex });
     if (out.ignored) return res.status(200).json({ ignored: true });
     return res.status(out.updated ? 200 : 201).json({ item: out.item });
   }
@@ -88,6 +88,7 @@ export default async function handler(req, res) {
     if ('readAt' in body) item.readAt = body.readAt;
     if ('progress' in body) item.progress = Math.max(0, Number(body.progress) || 0);
     if ('archivedAt' in body) item.archivedAt = body.archivedAt;
+    if ('bookmarkAt' in body) item.bookmarkAt = body.bookmarkAt; // current book chapter
     await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }

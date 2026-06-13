@@ -242,30 +242,38 @@ function renderColBody(body, col, list) {
     groups.get(it.group).push(it);
   }
   for (const [name, gItems] of groups) {
+    // a book group: chapters in reading order, with a bookmark on the current one
+    const isBook = gItems.some((it) => it.bookId);
+    if (isBook) gItems.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
+    const bm = isBook
+      ? gItems.reduce((a, b) => ((b.bookmarkAt || 0) > (a?.bookmarkAt || 0) ? b : a), null)
+      : null;
     const gkey = col.id + '/' + name;
     const collapsed = collapsedGroups.has(gkey);
     const gh = document.createElement('div');
     gh.className = 'group' + (collapsed ? ' collapsed' : '');
-    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span><span class="g-c">${gItems.length}</span>`;
+    const bmHint = bm?.bookmarkAt ? `<span class="g-bm">📖 ${(bm.chapterIndex || 0) + 1}/${gItems.length}</span>` : '';
+    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>${bmHint}<span class="g-c">${gItems.length}</span>`;
     gh.onclick = () => toggleGroup(gkey);
     body.append(gh);
-    if (!collapsed) for (const it of gItems) body.append(itemRow(it, col.id, gItems));
+    if (!collapsed) for (const it of gItems) body.append(itemRow(it, col.id, gItems, it === bm && !!bm.bookmarkAt));
   }
 }
 
-function itemRow(it, colId, colItems) {
+function itemRow(it, colId, colItems, isBookmark) {
   const words = it.words || 0;
   const pct = !it.readAt && it.progress > 0 && words ? Math.round((it.progress / words) * 100) + '%' : '';
   const row = document.createElement('div');
   row.className = 'item'
     + (it.readAt ? '' : ' unread')
     + (cur?.item.id === it.id ? ' active' : '')
+    + (isBookmark ? ' bookmark' : '')
     + (selected.has(it.id) ? ' sel' : '');
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
   const t = document.createElement('div');
   t.className = 't';
-  t.textContent = it.title;
+  t.textContent = (isBookmark ? '📖 ' : '') + it.title;
   row.append(t);
   row.onclick = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
@@ -719,6 +727,11 @@ async function openItem(item, { start = true } = {}) {
     cur.i = item.progress;
     toast('Resumed — ⟲ to restart');
   }
+  // a book chapter becomes the bookmark (current spot) the moment it's opened
+  if (item.bookId) {
+    item.bookmarkAt = Date.now();
+    api('PATCH', 'items', { body: { id: item.id, bookmarkAt: item.bookmarkAt } }).catch(() => {});
+  }
   $('empty').hidden = true;
   $('reader').hidden = false;
   $('item-title').textContent = item.title;
@@ -1014,15 +1027,22 @@ $('add-epub').onchange = async (e) => {
   toast('Reading book…');
   try {
     const book = await E.parseEpub(await file.arrayBuffer());
-    const text = E.compileBook(book);
-    const { item } = await api('POST', 'items', {
-      body: {
-        text,
-        title: book.title + (book.author ? ' — ' + book.author : ''),
-        sourceType: 'book',
-        words: text.split(/\s+/).length,
-      },
-    });
+    const bookId = crypto.randomUUID();
+    const group = book.title + (book.author ? ' — ' + book.author : '');
+    // one item per chapter, grouped under the book; sessionId makes a
+    // re-upload upsert in place instead of duplicating.
+    for (let i = 0; i < book.chapters.length; i++) {
+      const ch = book.chapters[i];
+      const text = ch.text.startsWith('#') ? ch.text : `# ${ch.title}\n\n${ch.text}`;
+      await api('POST', 'items', {
+        body: {
+          text, title: ch.title, sourceType: 'book', group, bookId,
+          chapterIndex: i, sessionId: `book:${bookId}:${i}`,
+          words: ch.text.split(/\s+/).length,
+        },
+      });
+      if (i % 5 === 0) toast(`Reading book… ${i + 1}/${book.chapters.length}`);
+    }
     toast(`📖 ${book.title} — ${book.chapters.length} chapters added`);
     await refresh();
   } catch (err) {
