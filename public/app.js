@@ -13,8 +13,8 @@ const DEFAULTS = {
   bg: '#101014',
   wpm: 300,
   mode: 'standard', // 'standard' | 'build'
-  autoplay: true,
-  keepOpen: false, // keep the backlog visible while reading
+  autoplay: false,
+  keepOpen: true, // keep the backlog visible while reading
   transcript: true, // live transcript pane that follows the current word
   token: '',
   account: null, // { name, email } when signed in with Google
