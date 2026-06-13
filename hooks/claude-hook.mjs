@@ -21,8 +21,10 @@ const TEXT_CAP = 40000;
 
 // Transcript JSONL → markdown: user prompts become headings (sections in the
 // reader), assistant prose follows. Pure, unit tested.
+// → { md, firstPrompt } : prompts become headings, assistant prose follows.
 export function compileTranscript(jsonl) {
   const out = [];
+  let firstPrompt = '';
   for (const line of jsonl.split('\n')) {
     let entry;
     try { entry = JSON.parse(line); } catch { continue; }
@@ -35,6 +37,7 @@ export function compileTranscript(jsonl) {
       .trim();
     if (!text) continue;
     if (entry.type === 'user') {
+      if (!firstPrompt) firstPrompt = text.replace(/\s+/g, ' ').trim();
       const words = text.replace(/\s+/g, ' ').split(' ');
       out.push('# ' + words.slice(0, 10).join(' ') + (words.length > 10 ? '…' : ''));
     } else if (entry.type === 'assistant') {
@@ -43,16 +46,21 @@ export function compileTranscript(jsonl) {
   }
   let md = out.join('\n\n');
   if (md.length > TEXT_CAP) md = '(earlier conversation trimmed)\n\n' + md.slice(-TEXT_CAP);
-  return md;
+  return { md, firstPrompt };
 }
 
 export function buildPayload(input, jsonl) {
-  const text = compileTranscript(jsonl);
-  if (text.split(/\s+/).length < 10) return null; // nothing worth reading yet
+  const { md, firstPrompt } = compileTranscript(jsonl);
+  if (md.split(/\s+/).length < 10) return null; // nothing worth reading yet
+  // mirror the Claude sidebar: title = the session's first prompt, grouped by
+  // its project folder (so the Agents column reads just like Claude Code).
+  const words = (firstPrompt || 'Claude session').split(' ');
+  const title = words.slice(0, 9).join(' ').slice(0, 80) + (words.length > 9 ? '…' : '');
   return {
     sessionId: input.session_id,
-    text,
-    title: 'Claude · ' + basename(input.cwd || '') || 'Claude session',
+    text: md,
+    title,
+    group: basename(input.cwd || '') || 'sessions',
     sourceType: 'claude_code',
   };
 }

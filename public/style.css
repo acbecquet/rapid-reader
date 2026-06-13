@@ -120,6 +120,24 @@ body {
 .col-h .col-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-h .col-c { opacity: .7; }
 .col-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 2px 0 6px; font-size: 11px; }
+.col-body .group {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px 3px;
+  margin-top: 2px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--dim);
+  cursor: pointer;
+  user-select: none;
+}
+.col-body .group:hover { color: var(--fg); }
+.col-body .group .caret { font-size: 8px; transition: transform .12s; }
+.col-body .group.collapsed .caret { transform: rotate(-90deg); }
+.col-body .group .g-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-body .group .g-c { opacity: .7; }
 .item {
   position: relative;
   padding: 5px 9px;

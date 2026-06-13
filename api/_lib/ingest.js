@@ -21,7 +21,7 @@ export function quickTitle(text) {
 // Add (or session-upsert) one item. Returns { item } or { ignored:true } when
 // the source's header toggle is off. `gated:false` skips the toggle (the
 // owner pasting by hand should never be dropped by a source switch).
-export async function addItem(uid, { text, sourceType, title = '', url = '', words, sessionId } = {}, { gated = true } = {}) {
+export async function addItem(uid, { text, sourceType, title = '', url = '', words, sessionId, group = '' } = {}, { gated = true } = {}) {
   text = String(text || '').trim();
   if (!text) throw new Error('text required');
   sourceType = SOURCE_TYPES.includes(sourceType) ? sourceType : 'other';
@@ -35,6 +35,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
   const items = await getDoc(KEY_U, []);
   const w = Number(words) || text.split(/\s+/).length;
   const t = (title || '').trim().slice(0, 100) || quickTitle(text);
+  const g = String(group || '').slice(0, 60);
   let source = '';
   try { source = new URL(url).hostname; } catch {}
 
@@ -45,6 +46,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
       prev.bodyUrl = await putBody(uid, prev.id, text);
       prev.title = t;
       prev.words = w;
+      if (g) prev.group = g;
       prev.readAt = null;
       await setDoc(KEY_U, [prev, ...items.filter((it) => it !== prev)].slice(0, CAP));
       return { item: prev, updated: true };
@@ -56,7 +58,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
   const item = {
     id, title: t, sourceType, url, source,
     createdAt: Date.now(), readAt: null, progress: 0, archivedAt: null,
-    words: w, bodyUrl, ...(sid ? { sessionId: sid } : {}),
+    words: w, bodyUrl, ...(g ? { group: g } : {}), ...(sid ? { sessionId: sid } : {}),
   };
   await setDoc(KEY_U, [item, ...items].slice(0, CAP));
   return { item };

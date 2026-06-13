@@ -179,9 +179,17 @@ function columnFor(it) {
   return hit?.id || cols[0]?.id || 'general';
 }
 
+// collapsed project groups, persisted: keyed `${columnId}/${group}`
+const collapsedGroups = new Set(JSON.parse(localStorage.getItem('rr:collapsed') || '[]'));
+function toggleGroup(gkey) {
+  collapsedGroups.has(gkey) ? collapsedGroups.delete(gkey) : collapsedGroups.add(gkey);
+  localStorage.setItem('rr:collapsed', JSON.stringify([...collapsedGroups]));
+  lastRender = ''; renderColumns();
+}
+
 function renderColumns() {
-  const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt]))
-    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',');
+  const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group]))
+    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',');
   if (key === lastRender) return;
   lastRender = key;
 
@@ -214,11 +222,35 @@ function renderColumns() {
     c.append(h);
     const body = document.createElement('div');
     body.className = 'col-body';
-    for (const it of list) body.append(itemRow(it, col.id, list));
+    renderColBody(body, col, list);
     c.append(body);
     wrap.append(c);
   }
   renderSelbar();
+}
+
+// Within a column, items with a `group` (e.g. a Claude project folder) render
+// under collapsible sub-headers — like the Claude Code sidebar. Ungrouped
+// items render flat at the top.
+function renderColBody(body, col, list) {
+  const ungrouped = list.filter((it) => !it.group);
+  for (const it of ungrouped) body.append(itemRow(it, col.id, list));
+
+  const groups = new Map();
+  for (const it of list) if (it.group) {
+    if (!groups.has(it.group)) groups.set(it.group, []);
+    groups.get(it.group).push(it);
+  }
+  for (const [name, gItems] of groups) {
+    const gkey = col.id + '/' + name;
+    const collapsed = collapsedGroups.has(gkey);
+    const gh = document.createElement('div');
+    gh.className = 'group' + (collapsed ? ' collapsed' : '');
+    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span><span class="g-c">${gItems.length}</span>`;
+    gh.onclick = () => toggleGroup(gkey);
+    body.append(gh);
+    if (!collapsed) for (const it of gItems) body.append(itemRow(it, col.id, gItems));
+  }
 }
 
 function itemRow(it, colId, colItems) {
