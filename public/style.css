@@ -138,6 +138,9 @@ body {
 .col-body .group.collapsed .caret { transform: rotate(-90deg); }
 .col-body .group .g-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-body .group .g-c { opacity: .7; }
+.col-body .group .g-bm { color: var(--accent); font-size: 9px; margin-right: 4px; }
+.item.bookmark { border-left-color: var(--accent); }
+.item.bookmark .t { color: var(--fg); }
 .item {
   position: relative;
   padding: 5px 9px;

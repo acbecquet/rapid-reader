@@ -48,8 +48,10 @@ captures get summarized into review notes first.
   readable language (Gemini first, MiniMax on overflow); the raw text is
   never RSVP'd word-by-word.
 - **Books (EPUB)** — upload a DRM-free `.epub`; it is parsed in your browser
-  (nothing leaves your device but the extracted text), chapters become
-  `[` / `]` sections, and your spot is remembered. Note: books bought in
+  (nothing leaves your device but the extracted text). Each chapter becomes
+  its own item under a collapsible book group in the **Books** column; a 📖
+  bookmark marks the chapter you're in (with a "3/39" hint on the book header)
+  and each chapter resumes where you left off. Note: books bought in
   Kindle / Apple Books / Google Play are DRM-locked and can't be imported,
   and none of those stores expose your reading position — grab a DRM-free
   copy (e.g. [gutenberg.org](https://www.gutenberg.org) or
@@ -82,12 +84,17 @@ browser tab is on a stale build — hard-refresh it.)
 
 Three ways to feed agent output into the queue:
 
-**Live transcripts (hook)** — `node hooks/install.mjs` (the setup script
-below does it for you) registers a Stop hook in `~/.claude/settings.json`:
-every time Claude finishes responding — desktop app or terminal — the
-session transcript lands in your backlog as one item per session, your
-prompts as section headings, updating live as the conversation grows.
-Remove anytime with `node hooks/install.mjs --remove`.
+**Live transcripts (hook + sync)** — `node hooks/install.mjs` (the setup
+script does it for you) registers a Claude Stop hook so each session lands in
+the **Agents** column the instant Claude replies. `node hooks/sync.mjs`
+backfills your recent **Claude Code and Codex** CLI sessions (reading
+`~/.claude/projects` and `~/.codex/sessions`), and `sync.mjs --watch` —
+double-click **`sync-agents`** — keeps both flowing live. Each session is one
+item, titled by its first prompt, grouped by project, exactly like the native
+sidebar. The capture is read-only and faithful; it never touches the agent's
+files. Remove the hook with `node hooks/install.mjs --remove`.
+(Copilot CLI doesn't write a readable transcript file, so it can't be
+captured the same way yet.)
 
 **Highlight capture** — select any Claude Code (or Codex/Copilot) output in
 the browser and hit the ▸ RSVP button. Text from `claude.ai` is automatically

@@ -28,9 +28,14 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
   no AI), `title.js` (LLM helper, kept but off the hot path).
 - `extension/` — MV3 browser extension that captures highlighted text and POSTs it.
 - `mcp/` — stdio MCP server (own package.json) so coding agents can push items.
-- `hooks/` — Claude Code Stop hook: pushes each session's transcript to the
-  backlog (upsert per `sessionId`); `install.mjs` wires it into
-  `~/.claude/settings.json`.
+- `hooks/` — CLI-agent capture. `transcript.mjs` (pure, tested) parses Claude
+  & Codex JSONL into a faithful, readable transcript. `claude-hook.mjs` is the
+  Claude Stop hook (instant). `sync.mjs` reads `~/.claude/projects` and
+  `~/.codex/sessions`, backfills recent sessions and `--watch`es for live
+  updates; both upsert per `sessionId` (`claude:`/`codex:` + file id), grouped
+  by the project cwd. `install.mjs` wires the hook + writes `~/.claude/
+  rapid-reader.json` (url+token, since hooks don't get env vars).
+- `sync-agents.cmd`/`.command` — double-click launcher for `sync.mjs --watch`.
 - `capture-anywhere.cmd`/`.command` — clipboard watcher → live highlight (any app).
 - `dev-server.mjs` — local dev: serves `public/` and mounts the api handlers with the
   in-memory store. `npm run dev`, then http://localhost:3000.
@@ -65,12 +70,14 @@ optional decoration; apply them to every change.
 - `rsvp.js`, `parse.js`, and `epub.js` stay pure (no DOM, no fetch) so they stay
   testable in Node.
 - Two-tier storage so the 4s poll stays tiny at any size. The Redis **index**
-  holds lean stubs: `{ id, title, sourceType, url, source, createdAt, readAt,
-  progress, archivedAt, words, bodyUrl, sessionId? }` — never the text. Each
-  item's full text lives in **Vercel Blob** at `bodyUrl` (in-memory in dev),
-  loaded only when an item is opened (`GET /api/items?id=`). Books are just
-  items with `sourceType:'book'`; Claude sessions carry `sessionId` (same
-  `sessionId` upserts the body + bumps to top). 2GB/person lives in Blob.
+  holds lean stubs: `{ id, title, sourceType, group?, createdAt, readAt,
+  progress, archivedAt, words, bodyUrl, sessionId?, bookId?, chapterIndex?,
+  bookmarkAt? }` — never the text. Each item's full text lives in **Vercel
+  Blob** at `bodyUrl`, or in a Redis `rr:body:` key when Blob has no token, or
+  in-memory in dev — loaded only when opened (`GET /api/items?id=`). Agent
+  sessions carry `sessionId` + `group` (project); books are one item per
+  chapter sharing a `bookId`/`group`, with a `bookmarkAt` marking the current
+  chapter. Same `sessionId` upserts in place + bumps to top.
 - Redis keys via `keyFor(base, uid)`: `rr:items[:uid]` lean index (cap 5000),
   `rr:prefs[:uid]` (capture gate + source toggles + columns), `rr:stats[:uid]`
   daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless

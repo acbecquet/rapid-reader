@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { compileTranscript, buildPayload } from '../hooks/claude-hook.mjs';
+import { compileTranscript } from '../hooks/transcript.mjs';
+import { buildPayload } from '../hooks/claude-hook.mjs';
 import itemsHandler from '../api/items.js';
 
 const jl = (entries) => entries.map((e) => JSON.stringify(e)).join('\n');
@@ -15,7 +16,7 @@ const TRANSCRIPT = jl([
 
 test('compileTranscript: prompts become headings, assistant prose follows, captures first prompt', () => {
   const { md, firstPrompt } = compileTranscript(TRANSCRIPT);
-  assert.ok(md.startsWith('# Fix the login bug and then explain what was wrong…'));
+  assert.ok(md.startsWith('# Fix the login bug and then explain what was wrong with the…'));
   assert.ok(md.includes('stale cookie'));
   assert.ok(md.includes('# great, now update the docs'));
   assert.ok(md.indexOf('stale cookie') < md.indexOf('# great'));
@@ -27,12 +28,12 @@ test('compileTranscript trims very long transcripts from the front', () => {
   const long = jl([{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'word '.repeat(20000) }] } }]);
   const { md } = compileTranscript(long);
   assert.ok(md.startsWith('(earlier conversation trimmed)'));
-  assert.ok(md.length < 41000);
+  assert.ok(md.length < 61000);
 });
 
 test('buildPayload: title from first prompt, group from project folder', () => {
   const p = buildPayload({ session_id: 'abc-123', cwd: '/home/u/projects/rapid-reader' }, TRANSCRIPT);
-  assert.equal(p.sessionId, 'abc-123');
+  assert.equal(p.sessionId, 'claude:abc-123');
   assert.equal(p.sourceType, 'claude_code');
   assert.ok(p.title.startsWith('Fix the login bug')); // session title = its first prompt
   assert.equal(p.group, 'rapid-reader'); // grouped by project, like the sidebar

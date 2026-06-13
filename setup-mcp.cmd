@@ -27,7 +27,10 @@ call claude mcp add rapid-reader ^
 
 node "%DIR%\hooks\install.mjs" --url https://rapid-reader-pi.vercel.app --token dghhdsaw87665432wwdghy456dfjjout3
 
+REM Backfill recent Claude + Codex sessions into the Agents column.
+node "%DIR%\hooks\sync.mjs" --days 30
+
 echo.
-echo Done. Restart Claude Code — its responses now stream to your queue,
-echo and you can ask it to "send a summary of what you did to my review queue"
+echo Done. Your recent Claude + Codex sessions are now in the Agents column.
+echo For LIVE updates as you work, double-click sync-agents.cmd (keeps a window open).
 pause

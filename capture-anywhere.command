@@ -14,10 +14,11 @@ while True:
             req = urllib.request.Request(
                 'https://rapid-reader-pi.vercel.app/api/live',
                 data=json.dumps({'text': t}).encode(),
-                headers={'content-type': 'application/json'})
+                headers={'content-type': 'application/json',
+                         'authorization': 'Bearer dghhdsaw87665432wwdghy456dfjjout3'})
             urllib.request.urlopen(req, timeout=5)
             print('sent', t[:60].replace('\n', ' '))
-        except Exception:
-            print('send failed — check your connection')
+        except Exception as e:
+            print('send failed:', e)
     time.sleep(0.7)
 EOF
