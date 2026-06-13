@@ -44,24 +44,23 @@ test('live slot: set, read via items poll, overwrite, clear', async () => {
   assert.equal(r.code, 405);
 });
 
-test('⚡ toggle gates live captures server-side', async () => {
+test('⚡ toggle (prefs.capture) gates live captures server-side', async () => {
+  const prefsHandler = (await import('../api/prefs.js')).default;
   // default: on
   let r = await call(itemsHandler, 'GET');
-  assert.equal(r.body.captureOn, true);
+  assert.equal(r.body.prefs.capture, true);
 
-  // off: POSTs are accepted but dropped, pending capture cleared
-  await call(liveHandler, 'POST', { text: 'Pending capture before the switch.' });
-  r = await call(liveHandler, 'PATCH', { on: false });
-  assert.equal(r.body.captureOn, false);
+  // off: live POSTs are dropped
+  r = await call(prefsHandler, 'PATCH', { capture: false });
+  assert.equal(r.body.prefs.capture, false);
   r = await call(liveHandler, 'POST', { text: 'Copied while capture is off.' });
   assert.equal(r.code, 200);
   assert.equal(r.body.ignored, true);
-  r = await call(itemsHandler, 'GET');
+  r = await call(liveHandler, 'GET');
   assert.equal(r.body.live, null);
-  assert.equal(r.body.captureOn, false);
 
   // back on: captures flow again
-  await call(liveHandler, 'PATCH', { on: true });
+  await call(prefsHandler, 'PATCH', { capture: true });
   await call(liveHandler, 'POST', { text: 'Copied after re-enabling.' });
   r = await call(itemsHandler, 'GET');
   assert.equal(r.body.live.text, 'Copied after re-enabling.');

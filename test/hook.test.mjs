@@ -39,9 +39,9 @@ test('buildPayload: session metadata, skips near-empty transcripts', () => {
   ])), null);
 });
 
-function call(method, body) {
+function call(method, body, query) {
   return new Promise((resolve) => {
-    const req = { method, headers: {}, body: body || {}, query: {} };
+    const req = { method, headers: {}, body: body || {}, query: query || {} };
     const res = {
       setHeader() {},
       status(c) { this.code = c; return this; },
@@ -62,7 +62,10 @@ test('items POST upserts by sessionId: same session updates in place, marks unre
   assert.equal(r.code, 200); // updated, not created
   assert.equal(r.body.item.id, id);
   assert.equal(r.body.item.readAt, null); // new content → unread again
-  assert.ok(r.body.item.text.includes('second one'));
+
+  // the updated body is fetchable by id
+  const got = await call('GET', null, { id });
+  assert.ok(got.body.text.includes('second one'));
 
   const list = await call('GET');
   assert.equal(list.body.items.filter((i) => i.sessionId === 's1').length, 1);

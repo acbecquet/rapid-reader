@@ -47,9 +47,9 @@ test('fetchReadable rejects private hosts and failed fetches', async () => {
   } finally { restore(); }
 });
 
-function call(method, body) {
+function call(method, body, query) {
   return new Promise((resolve) => {
-    const req = { method, headers: {}, body: body || {}, query: {} };
+    const req = { method, headers: {}, body: body || {}, query: query || {} };
     const res = {
       setHeader() {},
       status(c) { this.code = c; return this; },
@@ -59,7 +59,7 @@ function call(method, body) {
   });
 }
 
-test('POSTing a bare URL becomes a digested article item', async () => {
+test('POSTing a bare URL becomes a digested article item (no AI)', async () => {
   const restore = stubFetch(async () => ({ ok: true, text: async () => PAGE }));
   try {
     const r = await call('POST', { text: 'https://news.example.com/story' });
@@ -67,8 +67,10 @@ test('POSTing a bare URL becomes a digested article item', async () => {
     assert.equal(r.body.item.url, 'https://news.example.com/story');
     assert.equal(r.body.item.sourceType, 'article');
     assert.equal(r.body.item.title, 'Big News Story');
-    assert.ok(r.body.item.text.includes('first paragraph'));
-    await call('DELETE', { id: r.body.item.id });
+    // body (stripped text) is loaded by id; getBody reads the in-memory store
+    const got = await call('GET', null, { id: r.body.item.id });
+    assert.ok(got.body.text.includes('first paragraph'));
+    await call('DELETE', { body: { id: r.body.item.id } });
   } finally { restore(); }
 });
 

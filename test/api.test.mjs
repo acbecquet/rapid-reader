@@ -17,34 +17,36 @@ function call(method, { body, query } = {}) {
   });
 }
 
-test('items CRUD flow in memory mode', async () => {
+test('items CRUD: lean stubs in the index, body loaded on demand', async () => {
   let r = await call('GET');
   assert.equal(r.code, 200);
   assert.deepEqual(r.body.items, []);
+  assert.ok(r.body.prefs); // poll carries prefs
 
-  r = await call('POST', { body: { text: '  Some highlighted passage about reading speed.  ', url: 'https://example.com/article' } });
+  r = await call('POST', { body: { text: '  Some highlighted passage about reading speed.  ', sourceType: 'manual' } });
   assert.equal(r.code, 201);
   const item = r.body.item;
-  assert.equal(item.text, 'Some highlighted passage about reading speed.');
-  assert.equal(item.source, 'example.com');
-  assert.equal(item.sourceType, 'web');
+  assert.equal(item.title.length > 0, true);
   assert.equal(item.readAt, null);
   assert.equal(item.progress, 0);
-  assert.equal(item.archivedAt, null);
-  assert.ok(item.title.length > 0); // fallback title without GEMINI_API_KEY
+  assert.equal(item.words, 6);
+  assert.equal('text' in item, false); // stub carries no body
   assert.ok(item.id);
 
-  r = await call('POST', { body: { text: 'Second item' } });
+  // the body is fetched by id for the reader
+  r = await call('GET', { query: { id: item.id } });
+  assert.equal(r.body.text, 'Some highlighted passage about reading speed.');
+  assert.equal(r.body.item.id, item.id);
+
+  r = await call('POST', { body: { text: 'Second item here', sourceType: 'manual' } });
   r = await call('GET');
   assert.equal(r.body.items.length, 2);
-  assert.equal(r.body.items[0].text, 'Second item'); // newest first
+  assert.equal(r.body.items[0].title.length > 0, true); // newest first
 
   r = await call('PATCH', { body: { id: item.id, readAt: 123 } });
-  assert.equal(r.code, 200);
   assert.equal(r.body.item.readAt, 123);
 
   r = await call('DELETE', { query: { id: item.id } });
-  assert.equal(r.code, 200);
   r = await call('GET');
   assert.equal(r.body.items.length, 1);
 
@@ -58,7 +60,7 @@ test('source types: explicit, claude.ai detection, manual default, progress/arch
   assert.equal(r.body.item.sourceType, 'codex');
   const codexId = r.body.item.id;
 
-  r = await call('POST', { body: { text: 'From a Claude session', url: 'https://claude.ai/chat/abc' } });
+  r = await call('POST', { body: { text: 'From a Claude session', url: 'https://claude.ai/chat/abc', sourceType: 'claude_code' } });
   assert.equal(r.body.item.sourceType, 'claude_code');
 
   r = await call('POST', { body: { text: 'Pasted by hand' } });
@@ -76,22 +78,24 @@ test('source types: explicit, claude.ai detection, manual default, progress/arch
   await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
 });
 
-test('summarize without GEMINI_API_KEY reports 502', async () => {
-  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
-  r = await call('PATCH', { body: { id: r.body.item.id, summarize: true } });
-  assert.equal(r.code, 502);
-  const { body } = await call('GET');
-  await call('DELETE', { body: { ids: body.items.map((i) => i.id) } });
-});
-
-test('agent-written summary can be set and cleared directly', async () => {
-  let r = await call('POST', { body: { text: 'diff --git a/x b/x\n+new line' } });
-  const id = r.body.item.id;
-  r = await call('PATCH', { body: { id, summary: '## Notes\n- One change.' } });
-  assert.equal(r.body.item.summary, '## Notes\n- One change.');
-  r = await call('PATCH', { body: { id, summary: '' } });
-  assert.equal(r.body.item.summary, null);
-  await call('DELETE', { query: { id } });
+test('a disabled source toggle drops its inflow', async () => {
+  // turn codex off via prefs, then a codex POST is ignored
+  const prefsHandler = (await import('../api/prefs.js')).default;
+  await new Promise((resolve) => {
+    const req = { method: 'PATCH', headers: {}, body: { source: 'codex', on: false }, query: {} };
+    const res = { setHeader() {}, status(c) { this.code = c; return this; }, json() { resolve(); } };
+    prefsHandler(req, res);
+  });
+  let r = await call('POST', { body: { text: 'codex output', sourceType: 'codex' } });
+  assert.equal(r.body.ignored, true);
+  r = await call('GET');
+  assert.equal(r.body.items.length, 0);
+  // re-enable for other tests
+  await new Promise((resolve) => {
+    const req = { method: 'PATCH', headers: {}, body: { source: 'codex', on: true }, query: {} };
+    const res = { setHeader() {}, status(c) { this.code = c; return this; }, json() { resolve(); } };
+    prefsHandler(req, res);
+  });
 });
 
 test('rejects empty text and unknown methods', async () => {

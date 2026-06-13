@@ -7,14 +7,20 @@ import handler from './api/items.js';
 import statsHandler from './api/stats.js';
 import liveHandler from './api/live.js';
 import loginHandler from './api/login.js';
-import booksHandler from './api/books.js';
+import prefsHandler from './api/prefs.js';
+import healthHandler from './api/health.js';
+import telegramHandler from './api/telegram.js';
+import emailHandler from './api/email.js';
 
 const API = {
   '/api/items': handler,
   '/api/stats': statsHandler,
   '/api/live': liveHandler,
   '/api/login': loginHandler,
-  '/api/books': booksHandler,
+  '/api/prefs': prefsHandler,
+  '/api/health': healthHandler,
+  '/api/telegram': telegramHandler,
+  '/api/email': emailHandler,
 };
 const PORT = process.env.PORT || 3000;
 const MIME = {
