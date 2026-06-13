@@ -11,10 +11,12 @@ const DEFAULTS = {
   size: 42,
   color: '#eaeaea',
   bg: '#101014',
-  wpm: 300,
+  wpm: 600,
   mode: 'standard', // 'standard' | 'build'
-  autoplay: false,
+  autoplay: false, // open an item already playing (vs. paused) when you click it
   keepOpen: true, // keep the backlog visible while reading
+  chapterTitles: true, // AI-fill a book chapter's title when the EPUB gives none
+  aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
   token: '',
   account: null, // { name, email } when signed in with Google
@@ -223,6 +225,59 @@ function columnFor(it) {
   return hit?.id || cols[0]?.id || 'general';
 }
 
+// ---------- agents column: pick which agent you're looking at ----------
+// The agents column carries every coding agent. Rather than mix them, a header
+// dropdown switches between Claude Code (default), Codex, and everything else
+// ("Agents") — each with its own project subgroups and scroll.
+const AGENT_VIEWS = [
+  { id: 'claude_code', label: 'Claude Code' },
+  { id: 'codex', label: 'Codex' },
+  { id: 'agents', label: 'Agents' },
+];
+let agentView = localStorage.getItem('rr:agentView') || 'claude_code';
+const isAgentCol = (col) => (col.sources || []).some((s) => s === 'claude_code' || s === 'codex');
+function agentMatch(it) {
+  if (agentView === 'claude_code') return it.sourceType === 'claude_code';
+  if (agentView === 'codex') return it.sourceType === 'codex';
+  return it.sourceType !== 'claude_code' && it.sourceType !== 'codex';
+}
+// background noise that should never surface in the agents column
+const NOISE_GROUP = /^(observer|memory|background)|^sessions$/i;
+
+function colNameSpan(name) {
+  const s = document.createElement('span');
+  s.className = 'col-n';
+  s.textContent = name;
+  return s;
+}
+function colCountSpan(n) {
+  const s = document.createElement('span');
+  s.className = 'col-c';
+  s.textContent = n;
+  return s;
+}
+function agentPicker() {
+  const wrap = document.createElement('span');
+  wrap.className = 'col-n';
+  const sel = document.createElement('select');
+  sel.className = 'agent-pick';
+  for (const v of AGENT_VIEWS) {
+    const o = document.createElement('option');
+    o.value = v.id;
+    o.textContent = v.label;
+    if (v.id === agentView) o.selected = true;
+    sel.append(o);
+  }
+  sel.onchange = () => {
+    agentView = sel.value;
+    localStorage.setItem('rr:agentView', agentView);
+    lastRender = '';
+    renderColumns();
+  };
+  wrap.append(sel);
+  return wrap;
+}
+
 // collapsed project groups, persisted: keyed `${columnId}/${group}`
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem('rr:collapsed') || '[]'));
 function toggleGroup(gkey) {
@@ -233,7 +288,7 @@ function toggleGroup(gkey) {
 
 function renderColumns() {
   const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group, i.createdAt, i.bookmarkAt]))
-    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',');
+    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',') + agentView;
   if (key === lastRender) return;
   lastRender = key;
 
@@ -263,13 +318,17 @@ function renderColumns() {
   }
 
   for (const col of cols) {
-    const list = byCol[col.id] || [];
+    let list = byCol[col.id] || [];
+    const agentCol = isAgentCol(col);
+    // the agents column shows one agent at a time, never the noise groups
+    if (agentCol) list = list.filter((it) => agentMatch(it) && !NOISE_GROUP.test(it.group || ''));
     const c = document.createElement('div');
     c.className = 'col';
     c.dataset.col = col.id;
     const h = document.createElement('div');
     h.className = 'col-h';
-    h.innerHTML = `<span class="col-i">${icon(col.icon)}</span><span class="col-n">${col.name}</span><span class="col-c">${list.length}</span>`;
+    h.innerHTML = `<span class="col-i">${icon(col.icon)}</span>`;
+    h.append(agentCol ? agentPicker() : colNameSpan(col.name), colCountSpan(list.length));
     c.append(h);
     const body = document.createElement('div');
     body.className = 'col-body';
@@ -344,7 +403,7 @@ function itemRow(it, colId, colItems, isBookmark) {
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
     if (selected.size) { clearSelection(); }
     lastClick[colId] = it.id;
-    cur?.item.id === it.id ? closeReader() : openItem(it);
+    cur?.item.id === it.id ? closeReader() : openItem(it, { start: settings.autoplay });
   };
   return row;
 }
@@ -776,7 +835,7 @@ async function openItem(item, { start = true } = {}) {
     }
   }
   // lazy AI self-heal: only the item you actually opened, only if it looks wrong
-  if (!item.live && looksBadTitle(item.title)) healTitle(item);
+  if (!item.live && !settings.aiDisabled && looksBadTitle(item.title)) healTitle(item);
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
@@ -1043,6 +1102,8 @@ function fillSettingsForm() {
   $('s-mode').value = settings.mode;
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
+  $('s-chaptertitles').checked = settings.chapterTitles;
+  $('s-noai').checked = settings.aiDisabled;
   $('s-token').value = settings.token;
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
@@ -1069,6 +1130,8 @@ $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
 bind('s-mode', 'mode');
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
+bind('s-chaptertitles', 'chapterTitles');
+bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
 bind('s-token', 'token');
 
@@ -1105,24 +1168,41 @@ $('add-epub').onchange = async (e) => {
     const group = book.title + (book.author ? ' — ' + book.author : '');
     // one item per chapter, grouped under the book; sessionId makes a
     // re-upload upsert in place instead of duplicating.
+    const bare = []; // chapter ids with only a number → AI describes them
     for (let i = 0; i < book.chapters.length; i++) {
       const ch = book.chapters[i];
-      const text = ch.text.startsWith('#') ? ch.text : `# ${ch.title}\n\n${ch.text}`;
-      await api('POST', 'items', {
+      const text = E.chapterMarkdown(ch);
+      const { item } = await api('POST', 'items', {
         body: {
           text, title: ch.title, sourceType: 'book', group, bookId,
           chapterIndex: i, sessionId: `book:${bookId}:${i}`,
           words: ch.text.split(/\s+/).length,
         },
       });
+      if (item && /^Chapter\s+\d+$/i.test(ch.title)) bare.push(item.id);
       if (i % 5 === 0) toast(`Reading book… ${i + 1}/${book.chapters.length}`);
     }
     toast(`📖 ${book.title} — ${book.chapters.length} chapters added`);
     await refresh();
+    if (settings.chapterTitles && !settings.aiDisabled && bare.length) aiTitleChapters(bare);
   } catch (err) {
     toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
 };
+
+// Fill in the chapters the EPUB left untitled (just "Chapter N") with a short
+// AI-derived title that keeps the number. Off the hot path, capped + paced so
+// it never storms the model; degrades to first-words when no LLM is configured.
+async function aiTitleChapters(ids) {
+  let done = 0;
+  for (const id of ids.slice(0, 24)) {
+    try {
+      await api('PATCH', 'items', { body: { id, retitle: true, book: true } });
+      done++;
+    } catch { /* leave the numbered title */ }
+  }
+  if (done) { lastRender = ''; await refresh(); }
+}
 
 // ---------- connect this computer (agent capture / MCP) ----------
 // The indicator shows whether agent data is reaching your queue. A browser

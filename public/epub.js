@@ -94,6 +94,72 @@ function resolve(dir, href) {
   return out.join('/');
 }
 
+// ---------- chapter numbering ----------
+// Named front matter and structural dividers never take a chapter number.
+const NAMED_FM = /^(table of contents|contents|title page|cover|copyright|colophon|dedication|epigraph|acknowledg|foreword|preface|introduction|prologue|epilogue|afterword|appendix|notes|glossary|bibliography|index|about the)\b/i;
+const DIVISION = /^(part|book|section|volume)\b[\s:.\-—]*([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|the|[a-z]+)\s*$/i;
+const isFrontMatter = (t) => NAMED_FM.test(t) || DIVISION.test(t);
+
+const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20, xxi: 21, xxii: 22, xxiii: 23, xxiv: 24, xxv: 25 };
+const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
+function toNum(tok) {
+  const t = String(tok).toLowerCase();
+  if (/^[0-9]+$/.test(t)) return Number(t);
+  return ROMAN[t] ?? WORDS[t] ?? null;
+}
+
+// "Chapter 5 — Title" / "5. Title" / "V Title" → { num, label }. num is null
+// when the heading states no number (then the caller enumerates).
+function splitHeading(raw) {
+  let s = String(raw).trim();
+  let num = null, m;
+  if ((m = s.match(/^chapter\s+([0-9]+|[ivxlcdm]+|[a-z]+)\b[\s.:)\-—]*/i))) { num = toNum(m[1]); s = s.slice(m[0].length); }
+  else if ((m = s.match(/^([0-9]{1,3})\s*[.:)\-—]\s*/))) { num = Number(m[1]); s = s.slice(m[0].length); }
+  else if (/^[0-9]{1,3}$/.test(s)) { num = Number(s); s = ''; }
+  return { num, label: s.replace(/\s+/g, ' ').trim() };
+}
+
+// A chapter whose number/title is an image: read its alt text like a heading,
+// else the digits in the image filename (only trusted to corroborate the
+// running count). The structured "easy way" to read EPUB chapter-cover numbers.
+function imgInfo(xhtml) {
+  const tag = (xhtml.match(/<img\b[^>]*>/i) || [])[0] || '';
+  const alt = attr(tag, 'alt');
+  const file = attr(tag, 'src').match(/(\d{1,3})\D*\.[a-z0-9]+$/i);
+  return {
+    alt: alt && /[\p{L}\p{N}]/u.test(alt) ? alt.replace(/\s+/g, ' ').trim() : '',
+    fileNum: file ? Number(file[1]) : null,
+  };
+}
+
+// Navigation document (EPUB3 nav.xhtml or EPUB2 toc.ncx) → spine path → label.
+// The most reliable chapter titles, especially when the body shows an image.
+function parseNav(opf, opfDir, read) {
+  const map = new Map();
+  const dirOf = (p) => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
+  const add = (base, href, label) => {
+    label = decodeEntities(String(label || '').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+    if (!href || !label) return;
+    const path = resolve(base, href.split('#')[0]);
+    if (path && !map.has(path)) map.set(path, label);
+  };
+  const nav3 = opf.match(/<item\b[^>]*\bproperties\s*=\s*["'][^"']*\bnav\b[^"']*["'][^>]*>/i);
+  if (nav3) {
+    const p = resolve(opfDir, attr(nav3[0], 'href')), dir = dirOf(p), doc = read(p);
+    for (const a of doc.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || []) add(dir, attr(a, 'href'), a.replace(/^<a\b[^>]*>/i, ''));
+  }
+  const ncx = opf.match(/<item\b[^>]*media-type\s*=\s*["']application\/x-dtbncx\+xml["'][^>]*>/i);
+  if (ncx) {
+    const p = resolve(opfDir, attr(ncx[0], 'href')), dir = dirOf(p), doc = read(p);
+    for (const np of doc.match(/<navPoint\b[\s\S]*?<\/navPoint>/gi) || []) {
+      const label = (np.match(/<text[^>]*>([\s\S]*?)<\/text>/i) || [])[1];
+      const src = attr((np.match(/<content\b[^>]*>/i) || [])[0] || '', 'src');
+      add(dir, src, label);
+    }
+  }
+  return map;
+}
+
 // ArrayBuffer of an .epub → { title, author, chapters: [{ title, text }] }
 export async function parseEpub(buf) {
   const files = await unzip(buf);
@@ -114,27 +180,43 @@ export async function parseEpub(buf) {
   for (const tag of opf.match(/<item\b[^>]*>/gi) || []) {
     manifest.set(attr(tag, 'id'), attr(tag, 'href'));
   }
+  const nav = parseNav(opf, opfDir, read);
   const chapters = [];
-  let num = 0; // running count of unnamed/numbered chapters → "Chapter N"
+  let num = 0; // running chapter number for body chapters
   for (const tag of opf.match(/<itemref\b[^>]*>/gi) || []) {
     if (attr(tag, 'linear') === 'no') continue;
     const href = manifest.get(attr(tag, 'idref'));
     if (!href) continue;
-    const xhtml = read(resolve(opfDir, href));
+    const path = resolve(opfDir, href);
+    const xhtml = read(path);
     const text = chapterText(xhtml);
     if (text.split(/\s+/).length < 5) continue; // covers, blank pages
-    let title = chapterTitle(xhtml);
-    if (/^\d+$/.test(title)) { num = Number(title); title = `Chapter ${title}`; }
-    else if (!title) title = `Chapter ${++num}`;
+    const img = imgInfo(xhtml);
+    const raw = chapterTitle(xhtml) || nav.get(path) || img.alt;
+    let title;
+    if (raw && isFrontMatter(raw)) {
+      title = raw; // keep "Introduction", "Part Two", … out of the numbering
+    } else {
+      const { num: stated, label } = raw ? splitHeading(raw) : { num: null, label: '' };
+      if (stated != null) num = stated;                     // number from heading/nav/alt
+      else if (img.fileNum === num + 1) num = img.fileNum;   // image corroborates the count
+      else num++;                                           // basic enumeration
+      title = label ? `Chapter ${num} · ${label}` : `Chapter ${num}`;
+    }
     chapters.push({ title, text });
   }
   if (!chapters.length) throw new Error('no readable chapters');
   return { title: meta('title') || 'Untitled book', author: meta('creator'), chapters };
 }
 
+// One chapter → a markdown section headed by its (numbered) title. A heading
+// already at the top of the body is replaced so the chapter number always shows.
+export function chapterMarkdown(ch) {
+  const body = ch.text.replace(/^\s*#{1,6}\s+.*(?:\n|$)/, '').replace(/^\n+/, '');
+  return `# ${ch.title}\n\n${body}`.trim();
+}
+
 // One markdown stream: chapter titles become sections in parse.js.
 export function compileBook(book) {
-  return book.chapters
-    .map((c) => (c.text.startsWith('#') ? c.text : `# ${c.title}\n\n${c.text}`))
-    .join('\n\n');
+  return book.chapters.map(chapterMarkdown).join('\n\n');
 }
