@@ -6,8 +6,7 @@
 //     opened. 2GB/person lives in Blob, not Redis.
 // Local dev (no creds): everything in an in-memory Map (single process only).
 
-const memory = new Map();      // doc store fallback
-const bodyMem = new Map();     // body store fallback: `${uid}/${id}` -> text
+const memory = new Map();      // doc + body store fallback (dev only)
 let client;
 
 // Find an env var by regex (Vercel Marketplace integrations sometimes add a
@@ -87,22 +86,27 @@ export async function delDoc(key) {
   await (await redis()).del(key);
 }
 
-// ---------- text bodies (Vercel Blob, or in-memory in dev) ----------
-// Returns the blob URL to persist on the stub (null in dev — getBody then
-// resolves from the in-memory map by uid+id).
+// ---------- text bodies ----------
+// Bodies are stored apart from the lean index so the 4s poll never carries
+// them. Preference: Vercel Blob (scales to GBs) → Redis (durable, ~256MB
+// free) → in-memory (dev only). Returns the blob URL to persist on the stub,
+// or null when the body lives in Redis/memory (getBody resolves by uid+id).
+// Redis/memory bodies are wrapped { t } so a JSON-like body never misparses.
+const bodyKey = (uid, id) => `rr:body:${uid}:${id}`;
+
 export async function putBody(uid, id, text) {
-  if (!hasBlob()) {
-    bodyMem.set(`${uid}/${id}`, text);
-    return null;
+  if (hasBlob()) {
+    const { put } = await import('@vercel/blob');
+    const { url } = await put(`bodies/${uid}/${id}.txt`, text, {
+      access: 'public',
+      addRandomSuffix: true,
+      contentType: 'text/plain; charset=utf-8',
+      token: blobToken(),
+    });
+    return url;
   }
-  const { put } = await import('@vercel/blob');
-  const { url } = await put(`bodies/${uid}/${id}.txt`, text, {
-    access: 'public',
-    addRandomSuffix: true,
-    contentType: 'text/plain; charset=utf-8',
-    token: blobToken(),
-  });
-  return url;
+  await setDoc(bodyKey(uid, id), { t: text });
+  return null;
 }
 
 export async function getBody(uid, id, bodyUrl) {
@@ -110,7 +114,7 @@ export async function getBody(uid, id, bodyUrl) {
     const res = await fetch(bodyUrl);
     return res.ok ? await res.text() : '';
   }
-  return bodyMem.get(`${uid}/${id}`) ?? '';
+  return (await getDoc(bodyKey(uid, id), { t: '' })).t || '';
 }
 
 export async function delBody(uid, id, bodyUrl) {
@@ -121,5 +125,5 @@ export async function delBody(uid, id, bodyUrl) {
     } catch {}
     return;
   }
-  bodyMem.delete(`${uid}/${id}`);
+  await delDoc(bodyKey(uid, id));
 }
