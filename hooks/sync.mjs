@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename, sep } from 'node:path';
-import { buildPayload } from './transcript.mjs';
+import { buildPayload, cwdOf } from './transcript.mjs';
 
 function config() {
   let cfg = {};
@@ -57,23 +57,16 @@ function walk(dir, out = []) {
   return out;
 }
 
-// The agent records its working directory inside the transcript; that's the
-// accurate project name (the folder encoding can't separate "/" from "-").
-function cwdFromJsonl(jsonl) {
-  for (const line of jsonl.split('\n', 50)) {
-    const m = line.match(/"cwd"\s*:\s*"([^"]+)"/);
-    if (m) return basename(m[1].replace(/[\\/]+$/, ''));
-  }
-  return '';
-}
-
 async function syncFile(src, file, { url, token }) {
   let jsonl = '';
   try { jsonl = readFileSync(file, 'utf8'); } catch { return false; }
+  // the project from the transcript's own cwd (handles "/" in names + Codex)
+  const cwd = cwdOf(jsonl);
+  const group = cwd ? basename(cwd.replace(/[\\/]+$/, '')) : src.group(file);
   const payload = buildPayload({
     jsonl,
     sessionId: src.type + ':' + basename(file).replace(/\.jsonl$/, ''),
-    group: cwdFromJsonl(jsonl) || src.group(file),
+    group,
     sourceType: src.type,
   });
   if (!payload) return false;

@@ -1,19 +1,26 @@
 // Shared transcript parsing for CLI coding agents (Claude Code, Codex).
-// Pure and unit-tested. The goal is a faithful, read-only rendering of the
-// conversation exactly as it appeared natively: user prompts become headings,
-// assistant prose follows, tool-calls/non-text are dropped (not readable).
+// Pure and unit-tested. Goal: a faithful, read-only rendering of the actual
+// chat — exactly the live sessions, with background noise filtered out:
+//   - sub-agent (Task) sessions   → isSidechain
+//   - observer/memory agents      → automated first prompt / observer cwd
+//   - injected context            → <environment_context>, AGENTS.md, etc.
+// Titles prefer the session's own summary (matches the native sidebar).
 
 const TEXT_CAP = 60000;
 
-// One JSONL entry → { role, text } | null. Tolerant of the different shapes
-// Claude and Codex use (message/payload wrappers, string vs block content,
-// event-style messages).
+// Non-conversational user content that's in the transcript but not part of the
+// chat as shown natively (Codex env block, AGENTS.md, system reminders, …).
+const INJECTED = /^\s*(<environment_context>|<INSTRUCTIONS>|#\s*AGENTS\.md|<system-reminder>|<command-name>|<local-command|caveat: the messages below)/i;
+
+// Automated background agents the user doesn't want surfaced.
+const OBSERVER = /\bmemory agent\b|continuing to observe\b/i;
+
+// One JSONL entry → { role, text } | null. Tolerant of the shapes Claude and
+// Codex use (message/payload wrappers, string vs block content, event style).
 export function oneMessage(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const node = entry.message || entry.payload || entry;
   const type = node.type || entry.type;
-
-  // event-style (Codex): { type:'agent_message'|'user_message', message }
   if (!node.role && !entry.role) {
     if (/agent|assistant/i.test(type) && (node.message || node.text)) return mk('assistant', node.message || node.text);
     if (/user/i.test(type) && (node.message || node.text)) return mk('user', node.message || node.text);
@@ -21,13 +28,11 @@ export function oneMessage(entry) {
   }
   const role = node.role || entry.role;
   if (role !== 'user' && role !== 'assistant') return null;
-
   const c = node.content;
   let text = '';
   if (typeof c === 'string') text = c;
-  else if (Array.isArray(c)) {
-    text = c.map((b) => (typeof b === 'string' ? b : (b?.text || b?.content || ''))).filter(Boolean).join('\n\n');
-  } else if (typeof node.text === 'string') text = node.text;
+  else if (Array.isArray(c)) text = c.map((b) => (typeof b === 'string' ? b : (b?.text || b?.content || ''))).filter(Boolean).join('\n\n');
+  else if (typeof node.text === 'string') text = node.text;
   return mk(role, text);
 }
 
@@ -36,16 +41,57 @@ function mk(role, text) {
   return text ? { role, text } : null;
 }
 
-// JSONL → { md, firstPrompt }. user prompts → "# heading", assistant → prose.
+// Claude writes {type:'summary', summary:'…'} entries — the sidebar title.
+export function sessionSummary(jsonl) {
+  let s = '';
+  for (const line of jsonl.split('\n')) {
+    if (!line.includes('"summary"')) continue;
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    if (e.type === 'summary' && e.summary) s = String(e.summary);
+  }
+  return s.trim();
+}
+
+// cwd from a JSON "cwd" field (Claude) or an <cwd>…</cwd> tag (Codex env block).
+export function cwdOf(jsonl) {
+  const j = jsonl.match(/"cwd"\s*:\s*"([^"]+)"/);
+  if (j) return j[1];
+  const x = jsonl.match(/<cwd>([^<]+)<\/cwd>/);
+  return x ? x[1].trim() : '';
+}
+
+// Is this a background/non-interactive session we should NOT surface?
+export function isBackground(jsonl) {
+  let sidechain = false, realUsers = 0, firstPrompt = '';
+  for (const line of jsonl.split('\n')) {
+    if (!line) continue;
+    let e; try { e = JSON.parse(line); } catch { continue; }
+    if (e.isSidechain === true) sidechain = true;
+    const m = oneMessage(e);
+    if (m?.role === 'user' && !INJECTED.test(m.text)) {
+      realUsers++;
+      if (!firstPrompt) firstPrompt = m.text;
+    }
+  }
+  if (sidechain) return true;                 // sub-agent (Task) session
+  if (realUsers === 0) return true;           // no genuine human turn
+  if (OBSERVER.test(firstPrompt)) return true; // memory/observer agent
+  const proj = (cwdOf(jsonl).split(/[\\/]/).filter(Boolean).pop() || '');
+  if (/^(observer|memory|background)/i.test(proj)) return true;
+  return false;
+}
+
+// JSONL → { md, firstPrompt }. user prompts → "# heading", assistant → prose,
+// injected context dropped.
 export function compileTranscript(jsonl) {
   const out = [];
   let firstPrompt = '';
   for (const line of jsonl.split('\n')) {
-    let entry;
-    try { entry = JSON.parse(line); } catch { continue; }
+    let entry; try { entry = JSON.parse(line); } catch { continue; }
     const m = oneMessage(entry);
     if (!m) continue;
     if (m.role === 'user') {
+      if (INJECTED.test(m.text)) continue;
       const flat = m.text.replace(/\s+/g, ' ').trim();
       if (!firstPrompt) firstPrompt = flat;
       const words = flat.split(' ');
@@ -59,11 +105,13 @@ export function compileTranscript(jsonl) {
   return { md, firstPrompt };
 }
 
-// Build the /api/items payload for a session, or null if too thin to read.
+// Build the /api/items payload, or null for thin/background sessions.
 export function buildPayload({ jsonl, sessionId, group, sourceType }) {
+  if (isBackground(jsonl)) return null;
   const { md, firstPrompt } = compileTranscript(jsonl);
   if (md.split(/\s+/).length < 8) return null;
-  const words = (firstPrompt || 'session').split(' ');
-  const title = words.slice(0, 9).join(' ').slice(0, 80) + (words.length > 9 ? '…' : '');
+  const base = (sessionSummary(jsonl) || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
+  const words = base.split(' ');
+  const title = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
   return { sessionId, text: md, title, group: group || 'sessions', sourceType: sourceType || 'claude_code' };
 }

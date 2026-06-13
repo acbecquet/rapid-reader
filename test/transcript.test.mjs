@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { oneMessage, compileTranscript, buildPayload } from '../hooks/transcript.mjs';
+import { oneMessage, compileTranscript, buildPayload, isBackground, sessionSummary, cwdOf } from '../hooks/transcript.mjs';
 import { decodeProject } from '../hooks/sync.mjs';
 
 const jl = (entries) => entries.map((e) => JSON.stringify(e)).join('\n');
@@ -60,4 +60,58 @@ test('decodeProject turns a Claude cwd-encoded folder into a project name', () =
   assert.equal(decodeProject('-Users-me-projects-rapid-reader'), 'reader');
   assert.equal(decodeProject('-home-user-er2mod'), 'er2mod');
   assert.equal(decodeProject(''), 'sessions');
+});
+
+test('isBackground filters sub-agents, observers, and observer cwds — keeps real chats', () => {
+  const real = jl([
+    { type: 'user', cwd: '/n/Easy Red 2/mod', userType: 'external', message: { role: 'user', content: 'fix the crash in the vehicle crew controller' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed; here is the change and a test.' }] } },
+  ]);
+  assert.equal(isBackground(real), false);
+
+  const sidechain = jl([
+    { type: 'user', isSidechain: true, cwd: '/n/Easy Red 2/mod', message: { role: 'user', content: 'Adversarially review the new code' } },
+    { type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'Review done.' }] } },
+  ]);
+  assert.equal(isBackground(sidechain), true);
+
+  const observer = jl([
+    { type: 'user', cwd: '/home/user/work', message: { role: 'user', content: 'Hello memory agent, you are continuing to observe the workspace.' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Observing.' }] } },
+  ]);
+  assert.equal(isBackground(observer), true);
+
+  const observerCwd = jl([
+    { type: 'user', cwd: '/home/user/observer-sessions', message: { role: 'user', content: 'record the latest notes please' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Noted.' }] } },
+  ]);
+  assert.equal(isBackground(observerCwd), true);
+});
+
+test('buildPayload drops background sessions and titles from the summary', () => {
+  const sidechain = jl([
+    { type: 'user', isSidechain: true, message: { role: 'user', content: 'review this' } },
+    { type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'done with the review of everything' }] } },
+  ]);
+  assert.equal(buildPayload({ jsonl: sidechain, sessionId: 'claude:x' }), null);
+
+  const withSummary = jl([
+    { type: 'summary', summary: 'ER2 vehicle crew control fix' },
+    { type: 'user', userType: 'external', message: { role: 'user', content: 'the crew controller crashes on spawn, please investigate and fix it' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Found a null deref; patched and tested.' }] } },
+  ]);
+  const p = buildPayload({ jsonl: withSummary, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
+  assert.equal(p.title, 'ER2 vehicle crew control fix'); // sidebar-style title from the summary
+});
+
+test('Codex env-context block is skipped for the title; cwd parsed from it', () => {
+  const codex = jl([
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context> <cwd>/n/Easy Red 2/ER2DogfightMode</cwd> <shell>powershell</shell> </environment_context>' }] },
+    { type: 'message', role: 'user', content: [{ type: 'input_text', text: 'add a dogfight scoring mode to the mod' }] },
+    { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Added scoring with tests.' }] } },
+  ]);
+  assert.equal(cwdOf(codex), '/n/Easy Red 2/ER2DogfightMode');
+  const p = buildPayload({ jsonl: codex, sessionId: 'codex:z', sourceType: 'codex' });
+  assert.ok(p.title.startsWith('add a dogfight scoring mode')); // not the env block
+  assert.ok(!p.text.includes('environment_context'));
 });
