@@ -1224,8 +1224,9 @@ function fillSettingsForm() {
   renderMode();
   fillBuild();
   $('s-autoplay').checked = settings.autoplay;
-  $('s-keepopen').checked = settings.keepOpen;
-  // phones: the backlog is a full-screen sheet, so "keep open while reading" can't apply
+  // phones: the backlog is a full-screen sheet, so "keep open while reading"
+  // can't apply — show it off and disabled there
+  $('s-keepopen').checked = settings.keepOpen && !isMobile();
   $('s-keepopen').disabled = isMobile();
   $('s-noai').checked = settings.aiDisabled;
   $('s-blink').checked = settings.blinkCues;

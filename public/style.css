@@ -427,7 +427,11 @@ body {
   border-radius: 6px;
   cursor: pointer;
 }
-.icon-btn:hover { color: var(--fg); background: #22222b; }
+/* hover only where a real pointer exists — on a touchscreen the highlight
+   sticks after a tap (the play button kept a grey pill on phones) */
+@media (hover: hover) {
+  .icon-btn:hover { color: var(--fg); background: #22222b; }
+}
 .icon-btn.big { font-size: 18px; color: var(--fg); }
 .icon-btn.on { color: var(--accent); }
 .btn {
@@ -453,6 +457,7 @@ a.btn { text-decoration: none; display: inline-block; }
   justify-content: center;
   z-index: 50;
   padding: 14px;
+  padding-bottom: max(14px, env(safe-area-inset-bottom));
 }
 .modal[hidden] { display: none; }
 .modal-card {
@@ -463,6 +468,7 @@ a.btn { text-decoration: none; display: inline-block; }
   width: 100%;
   max-width: 320px;
   max-height: 90vh;
+  max-height: 88dvh; /* iOS vh counts the area behind the toolbar — dvh fits the screen */
   overflow-y: auto;
 }
 .modal-card h2 { margin: 0 0 10px; font-size: 13px; }
@@ -493,6 +499,16 @@ a.btn { text-decoration: none; display: inline-block; }
 .modal-card.wide { max-width: 480px; }
 /* settings panel: 25% wider, a touch larger type, tighter rows */
 #settings .modal-card { max-width: 400px; }
+/* live preview of the reader's look — so colour/font/size changes (and the
+   Eye-relief presets) show their effect without leaving the settings modal */
+#s-preview {
+  background: var(--reader-bg); color: var(--reader-fg);
+  font-family: var(--reader-font); font-size: min(var(--reader-size), 30px);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 16px 10px; margin: 2px 0 6px; text-align: center;
+  white-space: nowrap; overflow: hidden;
+}
+#s-preview b { color: var(--accent); font-weight: inherit; }
 /* Build mode reveals two extra sliders — anchor the panel near the top so it
    grows downward from the Mode buttons, instead of recentering and shoving the
    controls (and the text behind it) upward when you toggle Build. */
