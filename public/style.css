@@ -584,3 +584,33 @@ a.btn { text-decoration: none; display: inline-block; }
   z-index: 60;
   pointer-events: none;
 }
+
+/* ---------- phones (≤640px): the reader owns the screen ---------- */
+/* On a narrow viewport the six-column backlog can't show meaningfully and the
+   header overflows off the right edge. So on phones: compact the header to its
+   essential actions, let the RSVP reader fill the screen, and turn the backlog
+   into a full-screen sheet you pop open with ▾ — columns stacked vertically so
+   you land on your items, not a sideways scroll onto an empty column. Desktop
+   (and iPad, ≥641px) is untouched. */
+@media (max-width: 640px) {
+  #top { max-height: none; }
+
+  /* compact header: keep brand · what you're reading · the core ＋ ⚙ ▾ actions.
+     The desktop-leaning bits (agent connect, sync text, source toggles, stats,
+     columns, clipboard capture, epub, info) hide so the bar can't overflow. */
+  #mcp-init, #mcp-status, .bar-sep, #status, #info-btn, #raw-btn,
+  #capture-btn, #epub-btn, #tools .sources, #stats-btn, #cols-btn { display: none; }
+  .bar { gap: 4px; padding: 6px 8px; }
+  #item-title { max-width: 30vw; }
+
+  /* the open backlog is a full-screen sheet over the reader… */
+  #top:not(.closed) {
+    position: fixed; inset: 0; z-index: 40; background: var(--panel);
+  }
+  /* …with its columns stacked top-to-bottom instead of 130px-wide and sideways */
+  #top:not(.closed) #columns {
+    flex-direction: column; overflow-x: hidden; overflow-y: auto;
+  }
+  #top:not(.closed) .col { width: 100%; min-width: 0; flex: none; }
+  #top:not(.closed) .col-body { flex: none; overflow: visible; }
+}
