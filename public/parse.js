@@ -66,6 +66,19 @@ export function parseStructure(text) {
       continue;
     }
 
+    // Blockquote → its own section. In an agent transcript these carry the
+    // user's own prompts (compileTranscript emits them as '> …'), which the
+    // reader renders as a right-aligned "You wrote:" turn.
+    if (/^\s*>\s?/.test(line)) {
+      flushPara();
+      const buf = [];
+      while (i < lines.length && /^\s*>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, '').trim());
+      i--;
+      const text = buf.join(' ').trim();
+      if (text) sections.push({ type: 'quote', text, raw: buf.map((x) => '> ' + x).join('\n') });
+      continue;
+    }
+
     if (!line.trim()) flushPara();
     else para.push(line.replace(/^>\s?/, '').trim());
   }

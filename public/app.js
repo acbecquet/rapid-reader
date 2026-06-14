@@ -153,6 +153,8 @@ async function refresh() {
     } else {
       maybeOpenLive(live);
     }
+    cleanupNoise();    // once: drop stale observer/sessions noise
+    reconcileBooks();  // number + title every book chapter, a batch per poll
   } catch (e) {
     setStatus(
       e.code === 401 || e.code === 503
@@ -232,17 +234,22 @@ function columnFor(it) {
 const AGENT_VIEWS = [
   { id: 'claude_code', label: 'Claude Code' },
   { id: 'codex', label: 'Codex' },
+  { id: 'telegram', label: 'Telegram' },
   { id: 'agents', label: 'Agents' },
 ];
 let agentView = localStorage.getItem('rr:agentView') || 'claude_code';
 const isAgentCol = (col) => (col.sources || []).some((s) => s === 'claude_code' || s === 'codex');
 function agentMatch(it) {
-  if (agentView === 'claude_code') return it.sourceType === 'claude_code';
-  if (agentView === 'codex') return it.sourceType === 'codex';
-  return it.sourceType !== 'claude_code' && it.sourceType !== 'codex';
+  if (agentView === 'agents') return !['claude_code', 'codex', 'telegram'].includes(it.sourceType);
+  return it.sourceType === agentView;
 }
 // background noise that should never surface in the agents column
 const NOISE_GROUP = /^(observer|memory|background)|^sessions$/i;
+// stale noise to delete outright — strict, exact names only (safe to remove)
+const NOISE_EXACT = /^(observer-sessions|observer|memory|background|sessions)$/i;
+// agent/chat sources: they live in the agents column and get the "You wrote:"
+// conversational transcript
+const AGENT_SOURCES = new Set(['claude_code', 'codex', 'copilot', 'telegram']);
 
 function colNameSpan(name) {
   const s = document.createElement('span');
@@ -518,11 +525,11 @@ $('colcfg-close').onclick = async () => {
 $('colcfg').onclick = (e) => { if (e.target === $('colcfg')) $('colcfg-close').click(); };
 
 const DEFAULT_COLUMNS_CLIENT = [
-  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot'] },
+  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'books', name: 'Books', icon: 'book', sources: ['book'] },
   { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
   { id: 'news', name: 'News', icon: 'news', sources: ['article', 'web'] },
-  { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'telegram', 'other'] },
+  { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'other'] },
 ];
 
 async function saveCols(cols) {
@@ -584,6 +591,19 @@ function buildTranscript() {
     }
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';
+    else if (sec.type === 'quote') {
+      // a blockquote: in an agent/chat transcript it's a prompt you wrote
+      // (right-aligned, labelled); elsewhere it's just a quote
+      if (AGENT_SOURCES.has(cur.item.sourceType)) {
+        para.className = 'you';
+        const lbl = document.createElement('span');
+        lbl.className = 'you-label';
+        lbl.textContent = 'You wrote:';
+        para.append(lbl);
+      } else {
+        para.className = 'quote';
+      }
+    }
     for (const [t, i] of bySec[idx]) {
       const s = document.createElement('span');
       s.textContent = t.w;
@@ -1104,7 +1124,6 @@ function fillSettingsForm() {
   $('s-keepopen').checked = settings.keepOpen;
   $('s-chaptertitles').checked = settings.chapterTitles;
   $('s-noai').checked = settings.aiDisabled;
-  $('s-token').value = settings.token;
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
 }
@@ -1112,6 +1131,16 @@ function fillSettingsForm() {
 $('settings-btn').onclick = () => { fillSettingsForm(); $('settings').hidden = false; };
 $('s-close').onclick = () => { $('settings').hidden = true; refresh(); };
 $('settings').onclick = (e) => { if (e.target === $('settings')) { $('settings').hidden = true; refresh(); } };
+// Reset everything to defaults — quick undo for a bad setting. Keeps you signed in.
+$('s-reset').onclick = () => {
+  const { token, account } = settings;
+  settings = { ...DEFAULTS, token, account };
+  saveSettings();
+  fillSettingsForm();
+  setBacklog(true);
+  if (cur) updateHud();
+  toast('Settings reset to defaults');
+};
 
 const bind = (id, key, parse = (v) => v) => {
   $(id).oninput = (e) => {
@@ -1133,7 +1162,6 @@ bind('s-keepopen', 'keepOpen');
 bind('s-chaptertitles', 'chapterTitles');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
-bind('s-token', 'token');
 
 // ---------- add text / URL (paste only — sources have their own toggles) ----------
 $('add-btn').onclick = () => { $('add').hidden = false; $('add-text').focus(); };
@@ -1168,40 +1196,88 @@ $('add-epub').onchange = async (e) => {
     const group = book.title + (book.author ? ' — ' + book.author : '');
     // one item per chapter, grouped under the book; sessionId makes a
     // re-upload upsert in place instead of duplicating.
-    const bare = []; // chapter ids with only a number → AI describes them
     for (let i = 0; i < book.chapters.length; i++) {
       const ch = book.chapters[i];
-      const text = E.chapterMarkdown(ch);
-      const { item } = await api('POST', 'items', {
+      await api('POST', 'items', {
         body: {
-          text, title: ch.title, sourceType: 'book', group, bookId,
+          text: E.chapterMarkdown(ch), title: ch.title, sourceType: 'book', group, bookId,
           chapterIndex: i, sessionId: `book:${bookId}:${i}`,
           words: ch.text.split(/\s+/).length,
         },
       });
-      if (item && /^Chapter\s+\d+$/i.test(ch.title)) bare.push(item.id);
       if (i % 5 === 0) toast(`Reading book… ${i + 1}/${book.chapters.length}`);
     }
     toast(`📖 ${book.title} — ${book.chapters.length} chapters added`);
-    await refresh();
-    if (settings.chapterTitles && !settings.aiDisabled && bare.length) aiTitleChapters(bare);
+    await refresh(); // reconcileBooks() (run from refresh) numbers + titles every chapter
   } catch (err) {
     toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
 };
 
-// Fill in the chapters the EPUB left untitled (just "Chapter N") with a short
-// AI-derived title that keeps the number. Off the hot path, capped + paced so
-// it never storms the model; degrades to first-words when no LLM is configured.
-async function aiTitleChapters(ids) {
-  let done = 0;
-  for (const id of ids.slice(0, 24)) {
-    try {
-      await api('PATCH', 'items', { body: { id, retitle: true, book: true } });
-      done++;
-    } catch { /* leave the numbered title */ }
+// ---------- books: number + title every chapter, until none are raw ----------
+// A book can hold chapters the EPUB left with a junk/missing title ("##", blank)
+// or no number. On each poll we reconcile every book in reading order: front
+// matter keeps its name; each remaining chapter becomes "Chapter N · <desc>".
+// Numbers apply instantly (cheap); missing descriptions are filled by the AI a
+// few at a time, so even a large book converges over successive polls.
+const FRONT_MATTER_TITLE = /^\s*(introduction|prologue|epilogue|foreword|preface|afterword|appendix|acknowledg|table of contents|contents|copyright|colophon|dedication|epigraph|about the|index|glossary|bibliography|title page|cover|part\b|book\b|section\b|volume\b)/i;
+const chapterDesc = (title) => String(title || '')
+  .replace(/^\s*#{1,6}\s*/, '')
+  .replace(/^chapter\s+[0-9ivxlcdm]+\s*[·:.\-—]?\s*/i, '')
+  .replace(/\s+/g, ' ').trim();
+const isJunkTitle = (title) => { const t = String(title || '').trim(); return !t || /^[#*\-–—.·•\s]+$/.test(t); };
+
+const bookFixDone = new Set(); // id|target already PATCHed this session (no loops)
+function reconcileBooks() {
+  const byBook = new Map();
+  for (const it of items) if (it.bookId && !it.archivedAt) {
+    (byBook.get(it.bookId) || byBook.set(it.bookId, []).get(it.bookId)).push(it);
   }
-  if (done) { lastRender = ''; await refresh(); }
+  const numFix = []; // {it,title} — instant, no AI
+  const aiFix = [];  // {it,num}   — needs an AI description
+  for (const chs of byBook.values()) {
+    chs.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
+    let last = 0;
+    for (const it of chs) {
+      const title = String(it.title || '');
+      if (!isJunkTitle(title) && FRONT_MATTER_TITLE.test(title)) continue; // front matter: keep its name
+      const m = title.match(/^chapter\s+(\d+)/i);
+      if (m && chapterDesc(title)) { last = Number(m[1]); continue; }      // already "Chapter N · desc"
+      const num = m ? Number(m[1]) : last + 1;
+      last = num;
+      const desc = chapterDesc(title);
+      if (desc) numFix.push({ it, title: `Chapter ${num} · ${desc}`.slice(0, 120) });
+      else if (settings.chapterTitles && !settings.aiDisabled) aiFix.push({ it, num });
+      else numFix.push({ it, title: `Chapter ${num}` });
+    }
+  }
+  const cheap = numFix.filter((f) => f.it.title !== f.title && !bookFixDone.has(f.it.id + '|' + f.title));
+  const ai = aiFix.filter((f) => !bookFixDone.has(f.it.id + '|ai'));
+  if (!cheap.length && !ai.length) return;
+  for (const f of cheap.slice(0, 40)) {
+    bookFixDone.add(f.it.id + '|' + f.title);
+    f.it.title = f.title; // optimistic — the number shows on the next render
+    api('PATCH', 'items', { body: { id: f.it.id, title: f.title } }).catch(() => {});
+  }
+  for (const f of ai.slice(0, 6)) {
+    bookFixDone.add(f.it.id + '|ai');
+    f.it.title = `Chapter ${f.num}`; // show the number now; AI fills the description
+    api('PATCH', 'items', { body: { id: f.it.id, retitle: true, book: true, num: f.num } }).catch(() => {});
+  }
+  lastRender = ''; renderColumns();
+}
+
+// One-time per device: delete the stale background sessions (observer/sessions)
+// captured before they were filtered at the source — so they're gone, not hidden.
+async function cleanupNoise() {
+  if (localStorage.getItem('rr:noiseCleanup')) return;
+  localStorage.setItem('rr:noiseCleanup', '1');
+  const ids = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && NOISE_EXACT.test(it.group || '')).map((it) => it.id);
+  if (!ids.length) return;
+  items = items.filter((it) => !ids.includes(it.id));
+  ids.forEach((id) => knownIds?.delete(id));
+  lastRender = ''; renderColumns();
+  try { await api('DELETE', 'items', { body: { ids } }); toast(`Cleared ${ids.length} background session${ids.length === 1 ? '' : 's'}`); } catch {}
 }
 
 // ---------- connect this computer (agent capture / MCP) ----------
@@ -1426,7 +1502,7 @@ intakeShared().then(refresh).then(() => {
   const it = items.find((x) => x.id === wantedItem);
   if (it) openItem(it);
 });
-setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 4000);
+setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10000);
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') refresh();
   else { if (cur) saveProgress(); flushSession(); }

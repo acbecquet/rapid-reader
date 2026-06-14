@@ -14,12 +14,12 @@ const TRANSCRIPT = jl([
   { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Docs updated: the README now explains the cookie lifetime and the new flag.' }] } },
 ]);
 
-test('compileTranscript: prompts become headings, assistant prose follows, captures first prompt', () => {
+test('compileTranscript: prompts become "You wrote" blockquotes, assistant prose follows, captures first prompt', () => {
   const { md, firstPrompt } = compileTranscript(TRANSCRIPT);
-  assert.ok(md.startsWith('# Fix the login bug and then explain what was wrong with the…'));
+  assert.ok(md.startsWith('> Fix the login bug and then explain what was wrong with the session handling'));
   assert.ok(md.includes('stale cookie'));
-  assert.ok(md.includes('# great, now update the docs'));
-  assert.ok(md.indexOf('stale cookie') < md.indexOf('# great'));
+  assert.ok(md.includes('> great, now update the docs'));
+  assert.ok(md.indexOf('stale cookie') < md.indexOf('> great'));
   assert.ok(!md.includes('tool_use'));
   assert.ok(firstPrompt.startsWith('Fix the login bug'));
 });

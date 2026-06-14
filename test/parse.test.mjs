@@ -25,7 +25,7 @@ const y = 2;
 test('parseStructure identifies headings, paragraphs, bullets, tables, code', () => {
   const s = parseStructure(SAMPLE);
   assert.deepEqual(s.map((x) => x.type), [
-    'heading', 'paragraph', 'heading', 'bullets', 'table', 'code', 'paragraph',
+    'heading', 'paragraph', 'heading', 'bullets', 'table', 'code', 'quote',
   ]);
   assert.equal(s[0].title, 'Change Summary');
   assert.equal(s[2].title, 'Files Changed');
@@ -55,9 +55,9 @@ test('code blocks become a placeholder, raw preserved', () => {
   assert.ok(s[0].raw.includes('x = 1'));
 });
 
-test('blockquote markers are stripped into paragraphs', () => {
+test('blockquotes become quote sections (the reader renders them as "You wrote")', () => {
   const s = parseStructure('> quoted advice\n> on two lines');
-  assert.equal(s[0].type, 'paragraph');
+  assert.equal(s[0].type, 'quote');
   assert.equal(s[0].text, 'quoted advice on two lines');
 });
 
