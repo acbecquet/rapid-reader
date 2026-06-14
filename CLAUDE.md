@@ -131,7 +131,9 @@ review before merge — one PR "on test" at a time (latest update wins). On
 approval, merge the PR to `main`; afterward `staging` may need a reset to `main`
 to drop the squashed commit. Env vars must also be enabled for the **Preview**
 environment (a branch domain is a Preview deploy), or test lacks
-`GOOGLE_CLIENT_ID` etc.
+`GOOGLE_CLIENT_ID` etc. Google sign-in also needs the staging origin
+(`https://test.acb-apps.com`) in the OAuth client's **Authorized JavaScript
+origins** (no wildcards allowed), or it fails with `origin_mismatch`.
 
 ## Tooling (Claude Code plugins)
 
