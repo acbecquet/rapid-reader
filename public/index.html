@@ -260,11 +260,13 @@
       <h2 id="key-title">One quick setup step</h2>
       <p class="hint">Rapid Reader uses Google's Gemini to write sharp little titles for everything you capture. Drop in your own <span class="free">free</span> Gemini API key so you're reading on your own quota — about thirty seconds.</p>
       <ol class="keysteps">
-        <li>Open Google AI Studio and create a key (it's free).</li>
-        <li>Copy it, come back, and paste it below.</li>
+        <li>Click the red button below to open Google AI Studio, then click <b>Create API key</b>.</li>
+        <li>Name the key (<b>rapid-reader-key</b> works) and leave "Imported project" on its default.</li>
+        <li>Click <b>Create</b> to generate it.</li>
+        <li>After ~10 seconds the key appears. Click the copy icon at the right of the <b>API key</b> field, save it somewhere safe (a notes app, text file, or spreadsheet), then paste it in the field below.</li>
       </ol>
       <a id="key-get" class="btn" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Get your free key ↗</a>
-      <div class="row keypaste">
+      <div class="keypaste">
         <input id="key-input" type="password" placeholder="Paste your key (AIza…)" autocomplete="off" autocapitalize="off" spellcheck="false">
         <button id="key-paste" class="btn ghost" type="button" title="Paste from clipboard">📋</button>
       </div>
