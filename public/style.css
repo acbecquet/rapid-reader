@@ -253,8 +253,8 @@ body {
 #s-account #s-email { color: var(--fg); }
 #reader { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 #reader[hidden] { display: none; }
-/* ✕ sits in the stage, vertically centered between the two guide lines */
-#close-reader { position: absolute; top: 50%; left: 8px; transform: translateY(-50%); z-index: 6; }
+/* ✕ in the top-left corner of the reader, flush under the backlog */
+#close-reader { position: absolute; top: 4px; left: 8px; z-index: 6; }
 /* the reader's now-reading controls (title · sections · source) live up in the
    header bar as one boxed unit, centered between the spacers — so the
    ⚡ live-highlight title reads as the source, not a toggle */
@@ -272,15 +272,9 @@ body {
   text-overflow: ellipsis;
   max-width: 34vw;
 }
-#now-reading select {
-  background: var(--panel);
-  color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  font-size: 9.5px;
-  padding: 2px 6px;
-  max-width: 22vw;
-}
+/* section-jump lives on the [ / ] keys; no dropdown in the header (it doubled
+   the title and crowded the bar) */
+#now-reading select { display: none; }
 #stage {
   flex: 1;
   position: relative;

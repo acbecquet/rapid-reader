@@ -859,7 +859,7 @@ function maybeOpenLive(live) {
   openItem({
     id: '__live__',
     live: true,
-    title: '⚡ ' + (source || 'live highlight'),
+    title: source || 'Highlight', // the red ⚡ capture button already signals highlight mode
     text: live.text,
     url: live.url || '',
     sourceType: 'web',
