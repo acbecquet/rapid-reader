@@ -55,7 +55,9 @@ body {
 #mcp-init {
   background: none; border: 1px solid var(--accent); color: var(--fg);
   font-size: 10px; border-radius: 99px; padding: 2px 9px; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
 }
+#mcp-init svg { width: 11px; height: 11px; }
 #mcp-init:hover { background: #2a2a35; }
 #mcp-status { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; color: var(--dim); white-space: nowrap; }
 #mcp-dot { width: 8px; height: 8px; border-radius: 50%; background: #3a3a48; flex: none; }
@@ -180,14 +182,20 @@ body {
 .item.bookmark .t { color: var(--fg); }
 .item {
   position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   padding: 5px 9px;
   cursor: pointer;
   border-left: 2px solid transparent;
 }
+.item .ago { flex: none; font-size: 9px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .item:hover { background: #1d1d25; }
 .item.active { background: #20202a; border-left-color: var(--accent); }
 .item.sel { background: #2a2233; border-left-color: var(--accent); }
 .item .t {
+  flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -239,31 +247,27 @@ body {
 #s-account #s-email { color: var(--fg); }
 #reader { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 #reader[hidden] { display: none; }
-#close-reader { position: absolute; top: 5px; left: 8px; z-index: 5; }
-#secnav {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 6px 10px 0;
+#close-reader { position: absolute; top: 4px; left: 8px; z-index: 6; }
+/* the reader's now-reading controls (title · sections · source) live up in the
+   header bar; the reader itself is just word + transcript */
+#now-reading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+#now-reading[hidden] { display: none; }
+#item-title {
+  font-size: 10.5px;
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34vw;
 }
-#secnav select {
+#now-reading select {
   background: var(--panel);
   color: var(--dim);
   border: 1px solid var(--line);
   border-radius: 99px;
   font-size: 9.5px;
-  padding: 3px 6px;
-  max-width: 55%;
-}
-#item-title {
-  padding: 8px 36px 0 36px;
-  font-size: 10.5px;
-  color: var(--dim);
-  text-align: center;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 2px 6px;
+  max-width: 22vw;
 }
 #stage {
   flex: 1;
@@ -276,6 +280,9 @@ body {
   user-select: none;
   overflow: hidden;
 }
+/* with the transcript showing, the word sits in a thin row flush under the
+   backlog and the transcript fills the rest of the reader */
+#reader.reading-script #stage { flex: none; min-height: 0; padding: 8px 0 2px; }
 .guide {
   height: 10px;
   position: relative;

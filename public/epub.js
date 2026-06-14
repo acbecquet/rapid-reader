@@ -94,11 +94,45 @@ function resolve(dir, href) {
   return out.join('/');
 }
 
-// ---------- chapter numbering ----------
-// Named front matter and structural dividers never take a chapter number.
-const NAMED_FM = /^(table of contents|contents|title page|cover|copyright|colophon|dedication|epigraph|acknowledg|foreword|preface|introduction|prologue|epilogue|afterword|appendix|notes|glossary|bibliography|index|about the)\b/i;
-const DIVISION = /^(part|book|section|volume)\b[\s:.\-—]*([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|the|[a-z]+)\s*$/i;
-const isFrontMatter = (t) => NAMED_FM.test(t) || DIVISION.test(t);
+// ---------- chapter classification ----------
+// Front matter, structural dividers, and back matter never take a chapter
+// number. The first real chapter is "Chapter 1"; numbering enumerates ascending
+// and stops once back matter begins. Shared with the app's reconcile sweep.
+const FRONT_RE = /^(title page|half[- ]title|cover|copyright|colophon|dedication|epigraph|epigram|foreword|preface|introduction|prologue|epilogue|afterword|synopsis|credits|praise for|also by|by the same author|contents|table of contents|map\b|maps\b|timeline|cast of|dramatis personae|note to the reader|author.?s note|translator.?s note|acknowledg|appendix|notes\b|glossary|bibliography|index\b|about the)\b/i;
+const DIVIDER_RE = /^(part|book|section|volume|act)\b[\s.:#"'“”\-—]*([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|first|second|third|fourth|fifth|the\b)/i;
+const BACK_RE = /^(the end\b|about the author|about the publisher|about the type)/i;
+
+// strip a stored "Chapter N ·" / markdown prefix down to the human title
+export function bareTitle(title) {
+  return String(title || '')
+    .replace(/^\s*#{1,6}\s*/, '')
+    .replace(/^chapter\s+[0-9ivxlcdm]+\s*[·:.\-—]?\s*/i, '')
+    .replace(/\s+/g, ' ').trim();
+}
+
+// 'front' | 'divider' | 'back' | 'chapter' for one entry, given the book title
+// (so the title page — whose heading is the book's own name — is caught).
+export function classifyEntry(title, bookTitle = '') {
+  const t = bareTitle(title);
+  if (!t) return 'chapter';                                    // blank/junk → a chapter (numbered + AI-titled)
+  if (BACK_RE.test(t)) return 'back';
+  if (FRONT_RE.test(t)) return 'front';
+  if (bookTitle && t.toLowerCase() === String(bookTitle).toLowerCase().trim()) return 'front'; // title page
+  if (DIVIDER_RE.test(t)) return 'divider';
+  return 'chapter';
+}
+
+// Titles in reading order → [{ num, category }] aligned to input. `num` is the
+// chapter number for 'chapter' entries (1-based, ascending), null otherwise.
+export function enumerateChapters(titles, bookTitle = '') {
+  let num = 0, ended = false;
+  return titles.map((title) => {
+    const cat = ended ? 'back' : classifyEntry(title, bookTitle);
+    if (cat === 'chapter') return { num: ++num, category: 'chapter' };
+    if (cat === 'back') ended = true;
+    return { num: null, category: cat };
+  });
+}
 
 const ROMAN = { i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10, xi: 11, xii: 12, xiii: 13, xiv: 14, xv: 15, xvi: 16, xvii: 17, xviii: 18, xix: 19, xx: 20, xxi: 21, xxii: 22, xxiii: 23, xxiv: 24, xxv: 25 };
 const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
@@ -119,17 +153,11 @@ function splitHeading(raw) {
   return { num, label: s.replace(/\s+/g, ' ').trim() };
 }
 
-// A chapter whose number/title is an image: read its alt text like a heading,
-// else the digits in the image filename (only trusted to corroborate the
-// running count). The structured "easy way" to read EPUB chapter-cover numbers.
+// A chapter whose title is an image (a cover glyph): read its alt text like a
+// heading. The structured "easy way" to recover an EPUB chapter-cover title.
 function imgInfo(xhtml) {
-  const tag = (xhtml.match(/<img\b[^>]*>/i) || [])[0] || '';
-  const alt = attr(tag, 'alt');
-  const file = attr(tag, 'src').match(/(\d{1,3})\D*\.[a-z0-9]+$/i);
-  return {
-    alt: alt && /[\p{L}\p{N}]/u.test(alt) ? alt.replace(/\s+/g, ' ').trim() : '',
-    fileNum: file ? Number(file[1]) : null,
-  };
+  const alt = attr((xhtml.match(/<img\b[^>]*>/i) || [])[0] || '', 'alt');
+  return { alt: alt && /[\p{L}\p{N}]/u.test(alt) ? alt.replace(/\s+/g, ' ').trim() : '' };
 }
 
 // Navigation document (EPUB3 nav.xhtml or EPUB2 toc.ncx) → spine path → label.
@@ -181,8 +209,9 @@ export async function parseEpub(buf) {
     manifest.set(attr(tag, 'id'), attr(tag, 'href'));
   }
   const nav = parseNav(opf, opfDir, read);
-  const chapters = [];
-  let num = 0; // running chapter number for body chapters
+  const bookTitle = meta('title');
+  // pass 1: collect readable spine entries with their best raw heading
+  const entries = [];
   for (const tag of opf.match(/<itemref\b[^>]*>/gi) || []) {
     if (attr(tag, 'linear') === 'no') continue;
     const href = manifest.get(attr(tag, 'idref'));
@@ -191,20 +220,16 @@ export async function parseEpub(buf) {
     const xhtml = read(path);
     const text = chapterText(xhtml);
     if (text.split(/\s+/).length < 5) continue; // covers, blank pages
-    const img = imgInfo(xhtml);
-    const raw = chapterTitle(xhtml) || nav.get(path) || img.alt;
-    let title;
-    if (raw && isFrontMatter(raw)) {
-      title = raw; // keep "Introduction", "Part Two", … out of the numbering
-    } else {
-      const { num: stated, label } = raw ? splitHeading(raw) : { num: null, label: '' };
-      if (stated != null) num = stated;                     // number from heading/nav/alt
-      else if (img.fileNum === num + 1) num = img.fileNum;   // image corroborates the count
-      else num++;                                           // basic enumeration
-      title = label ? `Chapter ${num} · ${label}` : `Chapter ${num}`;
-    }
-    chapters.push({ title, text });
+    entries.push({ raw: chapterTitle(xhtml) || nav.get(path) || imgInfo(xhtml).alt || '', text });
   }
+  // pass 2: classify + enumerate — front matter/dividers/back keep their name,
+  // the first real chapter is Chapter 1, the rest count up.
+  const marks = enumerateChapters(entries.map((e) => e.raw), bookTitle);
+  const chapters = entries.map((e, i) => {
+    if (marks[i].category !== 'chapter') return { title: e.raw || 'Untitled', text: e.text };
+    const { label } = splitHeading(e.raw); // drop any number the heading itself stated
+    return { title: label ? `Chapter ${marks[i].num} · ${label}` : `Chapter ${marks[i].num}`, text: e.text };
+  });
   if (!chapters.length) throw new Error('no readable chapters');
   return { title: meta('title') || 'Untitled book', author: meta('creator'), chapters };
 }
