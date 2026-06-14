@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { llm, makeTitle } from '../api/_lib/title.js';
+import { llm, makeTitle, validateGeminiKey } from '../api/_lib/title.js';
 
 function stubFetch(impl) {
   const real = global.fetch;
@@ -74,5 +74,41 @@ test('makeTitle degrades to first words with no keys at all', async () => {
   const restore = stubFetch(async () => { throw new Error('no network'); });
   try {
     assert.equal(await makeTitle('Quick check of the fallback title path here'), 'Quick check of the fallback title path…');
+  } finally { restore(); }
+});
+
+test('an explicit per-user key is used over the shared env key', async () => {
+  const clean = bothKeys(); // env gk/mk present
+  const seen = [];
+  const restore = stubFetch(async (url, opts) => {
+    seen.push(opts.headers['x-goog-api-key']);
+    return geminiOk;
+  });
+  try {
+    await llm('hi', 100, undefined, { geminiKey: 'user-key' });
+    assert.equal(seen[0], 'user-key'); // not the env 'gk'
+  } finally { restore(); clean(); }
+});
+
+test('an explicit empty key disables env fallback (guests bring their own)', async () => {
+  const clean = bothKeys(); // env keys present, but…
+  let called = false;
+  const restore = stubFetch(async () => { called = true; return geminiOk; });
+  try {
+    // both providers explicitly disabled → no key, no call, no quota spent
+    assert.equal(await llm('hi', 100, undefined, { geminiKey: '', minimaxKey: '' }), null);
+    assert.equal(called, false);
+  } finally { restore(); clean(); }
+});
+
+test('validateGeminiKey checks the key via a no-cost models list', async () => {
+  const restore = stubFetch(async (url, opts) => {
+    assert.ok(String(url).includes('/v1beta/models'));
+    return opts.headers['x-goog-api-key'] === 'good' ? { ok: true } : { ok: false, status: 400 };
+  });
+  try {
+    assert.equal(await validateGeminiKey('good'), true);
+    assert.equal(await validateGeminiKey('bad'), false);
+    assert.equal(await validateGeminiKey(''), false); // no key → no network call
   } finally { restore(); }
 });

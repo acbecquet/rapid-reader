@@ -22,6 +22,8 @@ test('items CRUD: lean stubs in the index, body loaded on demand', async () => {
   assert.equal(r.code, 200);
   assert.deepEqual(r.body.items, []);
   assert.ok(r.body.prefs); // poll carries prefs
+  assert.equal('geminiKey' in r.body.prefs, false); // but never the raw key
+  assert.equal(r.body.prefs.hasGeminiKey, false);
 
   r = await call('POST', { body: { text: '  Some highlighted passage about reading speed.  ', sourceType: 'manual' } });
   assert.equal(r.code, 201);

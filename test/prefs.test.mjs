@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import prefsHandler from '../api/prefs.js';
-import { defaultPrefs, mergePrefs, DEFAULT_COLUMNS, SOURCES } from '../api/_lib/prefs.js';
+import { defaultPrefs, mergePrefs, publicPrefs, DEFAULT_COLUMNS, SOURCES } from '../api/_lib/prefs.js';
 
 function call(method, body) {
   return new Promise((resolve) => {
@@ -54,6 +54,40 @@ test('GET returns merged prefs; PATCH toggles capture, sources, columns', async 
   // reset for other suites
   await call('PATCH', { capture: true });
   await call('PATCH', { source: 'telegram', on: true });
+});
+
+test('publicPrefs never leaks the raw key; flags whether one is set/needed', () => {
+  const withKey = publicPrefs(mergePrefs({ geminiKey: 'AIza-secret' }), 'guest-123');
+  assert.equal('geminiKey' in withKey, false);
+  assert.equal(withKey.hasGeminiKey, true);
+  assert.equal(withKey.needsGeminiKey, false);
+
+  const noKey = publicPrefs(mergePrefs(null), 'guest-123');
+  assert.equal(noKey.hasGeminiKey, false);
+  assert.equal(noKey.needsGeminiKey, true); // a guest with no key still needs one
+});
+
+test('PATCH geminiKey validates, stores, and never echoes the raw key', async () => {
+  const real = global.fetch;
+  global.fetch = async () => ({ ok: true }); // validateGeminiKey → valid
+  try {
+    let r = await call('PATCH', { geminiKey: 'AIza-test-key' });
+    assert.equal(r.body.prefs.hasGeminiKey, true);
+    assert.equal('geminiKey' in r.body.prefs, false); // redacted on the way out
+
+    r = await call('GET');
+    assert.equal(r.body.prefs.hasGeminiKey, true);
+    assert.equal('geminiKey' in r.body.prefs, false);
+
+    global.fetch = async () => ({ ok: false, status: 400 }); // a bad key is rejected
+    r = await call('PATCH', { geminiKey: 'nope' });
+    assert.equal(r.code, 400);
+    r = await call('GET');
+    assert.equal(r.body.prefs.hasGeminiKey, true); // unchanged — old key kept
+  } finally { global.fetch = real; }
+
+  const r = await call('PATCH', { geminiKey: '' }); // '' clears it (no network)
+  assert.equal(r.body.prefs.hasGeminiKey, false);
 });
 
 test('PATCH rejects unknown methods', async () => {

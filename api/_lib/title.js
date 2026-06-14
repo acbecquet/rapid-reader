@@ -2,9 +2,12 @@
 // captures. Gemini (free tier) first; MiniMax picks up when Gemini is out of
 // quota or fails. prefer:'minimax' (the ⚙ review-model setting) flips the
 // order. Both degrade gracefully to null.
+//
+// Keys are passed in (not read from env here) so each signed-in user spends
+// their own free Gemini quota — see keysFor() in api/items.js. The keys arg
+// defaults to the shared env keys, which still serves the owner and local dev.
 
-async function minimax(prompt, maxOutputTokens) {
-  const key = process.env.MINIMAX_API_KEY;
+async function minimax(prompt, maxOutputTokens, key) {
   if (!key) return null;
   const base = process.env.MINIMAX_BASE_URL || 'https://api.minimax.io/v1';
   const model = process.env.MINIMAX_MODEL || 'MiniMax-M3';
@@ -28,8 +31,7 @@ async function minimax(prompt, maxOutputTokens) {
   }
 }
 
-async function gemini(prompt, maxOutputTokens) {
-  const key = process.env.GEMINI_API_KEY;
+async function gemini(prompt, maxOutputTokens, key) {
   if (!key) return null;
   const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite';
   try {
@@ -57,11 +59,17 @@ async function gemini(prompt, maxOutputTokens) {
   }
 }
 
-export async function llm(prompt, maxOutputTokens, prefer) {
+// keys: { geminiKey?, minimaxKey? } — each defaults to the shared env key, so
+// the owner and local dev keep working. Pass an explicit '' to *disable* a
+// provider for this call (guests with no key of their own get no AI, rather
+// than quietly spending the owner's quota).
+export async function llm(prompt, maxOutputTokens, prefer, keys = {}) {
+  const gk = keys.geminiKey ?? process.env.GEMINI_API_KEY;
+  const mk = keys.minimaxKey ?? process.env.MINIMAX_API_KEY;
   if (prefer === 'minimax') {
-    return (await minimax(prompt, maxOutputTokens)) ?? gemini(prompt, maxOutputTokens);
+    return (await minimax(prompt, maxOutputTokens, mk)) ?? gemini(prompt, maxOutputTokens, gk);
   }
-  return (await gemini(prompt, maxOutputTokens)) ?? minimax(prompt, maxOutputTokens);
+  return (await gemini(prompt, maxOutputTokens, gk)) ?? minimax(prompt, maxOutputTokens, mk);
 }
 
 export function fallbackTitle(text) {
@@ -69,25 +77,45 @@ export function fallbackTitle(text) {
   return words.slice(0, 7).join(' ') + (words.length > 7 ? '…' : '');
 }
 
-export async function makeTitle(text, prefer) {
+export async function makeTitle(text, prefer, keys) {
   const title = await llm(
     'Write a terse 3-7 word title for the following text. ' +
       'Reply with the title only, no quotes.\n\n' + text.slice(0, 4000),
     1000,
-    prefer
+    prefer,
+    keys
   );
   return title ? title.replace(/^["“']+|["”']+$/g, '').slice(0, 80) : fallbackTitle(text);
 }
 
 // Code/diff → readable review notes (the RSVP-able language around the work).
 // Returns null when no LLM is available so the caller can report it.
-export async function makeSummary(text, prefer) {
+export async function makeSummary(text, prefer, keys) {
   return llm(
     'Summarize this code or diff into short review notes a developer can ' +
       'read quickly: what changed, any behavior changes, and what to ' +
       'double-check. Use markdown headings and bullet points with short ' +
       'plain sentences. Do not include code blocks.\n\n' + text.slice(0, 16000),
     3000,
-    prefer
+    prefer,
+    keys
   );
+}
+
+// Confirm a user-supplied Gemini key really works before we store it — so the
+// sign-in flow can honestly say "you're set". Listing models needs only a
+// valid key and costs no generation quota, so checking never eats their free
+// budget. true only on a clean 200; a bad/typo'd key (400/403) returns false.
+export async function validateGeminiKey(key) {
+  key = String(key || '').trim();
+  if (!key) return false;
+  try {
+    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
+      headers: { 'x-goog-api-key': key },
+      signal: AbortSignal.timeout(10000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }

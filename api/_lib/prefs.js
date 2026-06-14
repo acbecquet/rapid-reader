@@ -19,10 +19,13 @@ export function defaultPrefs() {
     capture: true,
     sources: Object.fromEntries(SOURCES.map((s) => [s, true])),
     columns: DEFAULT_COLUMNS,
+    geminiKey: '', // this user's own free Gemini key (bring-your-own quota)
   };
 }
 
-// Merge stored prefs over the defaults so new fields always exist.
+// Merge stored prefs over the defaults so new fields always exist. Carries the
+// raw geminiKey — this is the server-internal view; never send it to a client
+// (use publicPrefs for that).
 export function mergePrefs(stored) {
   const d = defaultPrefs();
   if (!stored) return d;
@@ -30,5 +33,22 @@ export function mergePrefs(stored) {
     capture: stored.capture !== false,
     sources: { ...d.sources, ...(stored.sources || {}) },
     columns: Array.isArray(stored.columns) && stored.columns.length ? stored.columns : d.columns,
+    geminiKey: typeof stored.geminiKey === 'string' ? stored.geminiKey : '',
   };
+}
+
+// Will AI titles work for this user *without* them adding a key? Their own key
+// always counts; the owner is also covered by the server's shared env key.
+// Guests are not — bringing their own free key is the whole point, so each
+// tester spends their own quota instead of the owner's.
+export function aiCovered(uid, merged) {
+  if (merged.geminiKey) return true;
+  return uid === 'owner' && !!(process.env.GEMINI_API_KEY || process.env.MINIMAX_API_KEY);
+}
+
+// Client-safe view of prefs: the raw key never leaves the server. The browser
+// gets only whether a key is set, and whether this user still needs one.
+export function publicPrefs(merged, uid) {
+  const { geminiKey, ...rest } = merged;
+  return { ...rest, hasGeminiKey: !!geminiKey, needsGeminiKey: !aiCovered(uid, merged) };
 }

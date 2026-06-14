@@ -114,7 +114,9 @@ Optional env vars:
 - `MINIMAX_API_KEY`: preferred LLM for titles, summaries, page reorganization.
 - `MINIMAX_MODEL`: optional override, default is `MiniMax-M2`.
 - `MINIMAX_BASE_URL`: optional override, default is `https://api.minimax.io/v1`.
-- `GEMINI_API_KEY`: fallback LLM.
+- `GEMINI_API_KEY`: fallback LLM (owner only — each signed-in user brings
+  their own free Gemini key, set on sign-in and stored in their prefs, so
+  growing the tester pool doesn't drain the owner's quota).
 - `GEMINI_MODEL`: optional override, default is `gemini-2.5-flash-lite`.
 - `GOOGLE_CLIENT_ID`: enables Google sign-in.
 - `OWNER_EMAIL`: maps owner Google sign-in to the existing owner queue.

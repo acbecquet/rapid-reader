@@ -13,7 +13,7 @@
 // DELETE /api/items?id=… | { id } | { ids:[…] }   → { ok }
 import { getDoc, getDocs, setDoc, getBody, delBody } from './_lib/store.js';
 import { gate, keyFor } from './_lib/auth.js';
-import { mergePrefs } from './_lib/prefs.js';
+import { mergePrefs, publicPrefs } from './_lib/prefs.js';
 import { fetchReadable } from './_lib/readable.js';
 import { addItem, SOURCE_TYPES } from './_lib/ingest.js';
 import { makeTitle } from './_lib/title.js';
@@ -21,6 +21,18 @@ import { makeTitle } from './_lib/title.js';
 const KEY = 'rr:items';
 
 export { SOURCE_TYPES };
+
+// Which API keys this user's AI calls may spend. A signed-in user spends their
+// own Gemini key; the owner falls back to the shared env keys; a guest with no
+// key of their own gets none (explicit '' disables env fallback in llm()) — so
+// growing the tester pool never drains the owner's free quota.
+function keysFor(uid, prefs) {
+  const owner = uid === 'owner';
+  return {
+    geminiKey: prefs.geminiKey || (owner ? undefined : ''),
+    minimaxKey: owner ? undefined : '',
+  };
+}
 
 function defaultSourceType(url) {
   if (!url) return 'manual';
@@ -49,7 +61,7 @@ export default async function handler(req, res) {
     const [items, live, prefs] = await getDocs(
       [KEY_U, keyFor('rr:live', uid), keyFor('rr:prefs', uid)], [[], null, null]
     );
-    return res.status(200).json({ items, live, prefs: mergePrefs(prefs) });
+    return res.status(200).json({ items, live, prefs: publicPrefs(mergePrefs(prefs), uid) });
   }
 
   const items = await getDoc(KEY_U, []);
@@ -89,7 +101,8 @@ export default async function handler(req, res) {
     // words). The frontend asks for this only when a title looks wrong.
     if (body.retitle) {
       const text = await getBody(uid, item.id, item.bodyUrl);
-      const t = await makeTitle(text, body.model === 'minimax' ? 'minimax' : undefined);
+      const prefs = mergePrefs(await getDoc(keyFor('rr:prefs', uid), null));
+      const t = await makeTitle(text, body.model === 'minimax' ? 'minimax' : undefined, keysFor(uid, prefs));
       if (t) item.title = t.slice(0, 120);
     }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
