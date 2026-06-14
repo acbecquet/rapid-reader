@@ -47,11 +47,13 @@ body {
 .bar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   padding: 5px 10px;
   flex: none;
 }
-.brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; }
+.brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; white-space: nowrap; }
+.brand .rr { color: var(--accent); }
+.bar-sep { color: var(--line); font-size: 12px; }
 #mcp-init {
   background: none; border: 1px solid var(--accent); color: var(--fg);
   font-size: 10px; border-radius: 99px; padding: 2px 9px; cursor: pointer; white-space: nowrap;
@@ -490,6 +492,31 @@ a.btn { text-decoration: none; display: inline-block; }
 #settings .modal-card h2 { font-size: 15px; }
 #settings .modal-card label { font-size: 13px; margin: 7px 0; }
 #settings .modal-card .hint, #settings .acct-line { font-size: 12.5px; }
+/* Standard / Build mode — circular radio indicators */
+.seg { display: flex; gap: 16px; margin: 4px 0 6px; }
+.seg-opt {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--dim); font: inherit; font-size: 13px;
+}
+.seg-opt::before {
+  content: ''; width: 14px; height: 14px; flex: none;
+  border-radius: 50%; border: 2px solid var(--line); box-sizing: border-box;
+}
+.seg-opt.on { color: var(--fg); }
+.seg-opt.on::before { border-color: var(--accent); background: radial-gradient(var(--accent) 0 3px, transparent 4px); }
+#build-opts { border-left: 2px solid var(--line); padding-left: 10px; margin-bottom: 4px; }
+#build-opts .hint { margin-bottom: 6px; }
+#build-opts b { color: var(--fg); }
+/* "what's the point?" panel */
+.modal-card.info { max-width: 560px; }
+.modal-card.info h3 { font-size: 12px; margin: 14px 0 4px; color: var(--fg); }
+.modal-card.info p { font-size: 12.5px; line-height: 1.55; color: var(--fg); margin: 0 0 8px; }
+.modal-card.info a { color: var(--accent); }
+.modal-card.info .src { font-size: 11px; color: var(--dim); }
+.info-tbl { width: 100%; border-collapse: collapse; margin: 8px 0 2px; font-size: 12px; }
+.info-tbl th, .info-tbl td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.info-tbl th { color: var(--dim); text-transform: uppercase; font-size: 9.5px; letter-spacing: .05em; }
 .modal-card pre {
   background: var(--bg);
   border: 1px solid var(--line);
