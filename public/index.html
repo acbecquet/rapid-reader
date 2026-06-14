@@ -63,6 +63,7 @@
         <div class="guide top"></div>
         <div id="word"><span id="pre"></span><span id="pivot"></span><span id="post"></span></div>
         <div class="guide bottom"></div>
+        <div id="blink-cue">blink</div>
       </div>
       <div id="progress"><div id="bar"></div></div>
       <div id="transcript" hidden></div>
@@ -116,6 +117,18 @@
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
+      <h3 class="s-h">Eye relief</h3>
+      <p class="hint">Optional comfort aids for long reads — keeping your gaze on one spot is the point.</p>
+      <div id="s-presets">
+        <button type="button" class="preset" data-fg="#eaeaea" data-bg="#101014" style="background:#101014;color:#eaeaea">Classic</button>
+        <button type="button" class="preset" data-fg="#4a3f2f" data-bg="#f3e9d2" style="background:#f3e9d2;color:#4a3f2f">Sepia</button>
+        <button type="button" class="preset" data-fg="#d8d4cc" data-bg="#1b1a18" style="background:#1b1a18;color:#d8d4cc">Warm grey</button>
+        <button type="button" class="preset" data-fg="#9ea0ab" data-bg="#17171b" style="background:#17171b;color:#9ea0ab">Soft</button>
+        <button type="button" class="preset" data-fg="#b39a6e" data-bg="#14110b" style="background:#14110b;color:#b39a6e">Warm dim</button>
+      </div>
+      <label class="check"><input id="s-blink" type="checkbox"> Blink reminders — a gentle nudge to blink as you read</label>
+      <label class="check"><input id="s-breaks" type="checkbox"> Look-away breaks — pause every
+        <input id="s-break-every" type="number" min="5" max="60" step="5" class="num"> min to rest your eyes</label>
       <div id="s-aikey" hidden>
         <div id="s-aikey-status" class="acct-line"></div>
         <button id="s-aikey-btn" class="btn ghost" type="button">Add your free Gemini key</button>
@@ -255,6 +268,15 @@
         <button id="key-skip" class="btn ghost" type="button">Skip for now</button>
         <button id="key-save" class="btn" type="button">Save key</button>
       </div>
+    </div>
+  </div>
+
+  <div id="breakmodal" class="modal" hidden>
+    <div class="modal-card">
+      <h2>Rest your eyes 👀</h2>
+      <p class="hint">Look at something about 20 feet away for a moment — it relaxes the focusing muscles a screen keeps tense, and gives you a chance to blink.</p>
+      <p class="break-count"><span id="break-count">20</span>s</p>
+      <div class="row right"><button id="break-skip" class="btn">Resume reading</button></div>
     </div>
   </div>
 

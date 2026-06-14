@@ -23,14 +23,13 @@ const DEFAULTS = {
   keepOpen: true, // keep the backlog visible while reading
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
+  blinkCues: false, // eye relief: gentle nudge to blink while reading
+  breakReminders: false, // eye relief: pause for a periodic look-away break
+  breakEvery: 20, // eye relief: minutes of reading between look-away breaks
   token: '',
   account: null, // { name, email } when signed in with Google
 };
-const storedSettings = JSON.parse(localStorage.getItem('rr:settings') || '{}');
-let settings = { ...DEFAULTS, ...storedSettings };
-// Phones: the word should own the screen, so the transcript starts off (toggle
-// ¶ to bring it up) unless this device has explicitly chosen otherwise.
-if (isMobile() && !('transcript' in storedSettings)) settings.transcript = false;
+let settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('rr:settings') || '{}') };
 
 function saveSettings() {
   localStorage.setItem('rr:settings', JSON.stringify(settings));
@@ -730,7 +729,11 @@ function markTranscript() {
   if (nowSpan) nowSpan.classList.add('now');
   // agent chats read like a messenger: newest pinned to the bottom — unless
   // you're actively RSVP-playing, then the transcript follows the word
-  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
+  if (isMobile() && nowSpan) {
+    // halo layout: pin the current word behind the centred RSVP band, so the
+    // transcript reads above and below the fixed reader
+    nowSpan.scrollIntoView({ block: 'center' });
+  } else if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
   } else if (nowSpan) {
@@ -1191,7 +1194,7 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
     if (e.key === 'Escape') { if (open === 'keymodal') closeKeyModal(); else $(open).hidden = true; }
@@ -1226,7 +1229,12 @@ function fillSettingsForm() {
   fillBuild();
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
+  // phones: the backlog is a full-screen sheet, so "keep open while reading" can't apply
+  $('s-keepopen').disabled = isMobile();
   $('s-noai').checked = settings.aiDisabled;
+  $('s-blink').checked = settings.blinkCues;
+  $('s-breaks').checked = settings.breakReminders;
+  $('s-break-every').value = settings.breakEvery;
   // Bring-your-own Gemini key — manageable here once you can sync (have a token)
   const hasKey = !!prefs?.hasGeminiKey;
   $('s-aikey').hidden = !settings.token;
@@ -1294,6 +1302,55 @@ bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
+
+// ---------- eye relief (optional comfort aids) ----------
+// Calm color/contrast presets just write the existing reader fg/bg (real
+// evidence for visual stress); blink cues + look-away breaks run off a 1s tick
+// that only accrues while you're actually playing.
+function applyPreset(fg, bg) {
+  settings.color = fg; settings.bg = bg;
+  $('s-color').value = fg; $('s-bg').value = bg;
+  saveSettings(); // applySettings() repaints --reader-fg/--reader-bg
+  if (cur) updateHud();
+}
+document.querySelectorAll('#s-presets .preset').forEach((b) => {
+  b.onclick = () => applyPreset(b.dataset.fg, b.dataset.bg);
+});
+bind('s-blink', 'blinkCues');
+bind('s-breaks', 'breakReminders');
+$('s-break-every').onchange = (e) => {
+  settings.breakEvery = Math.max(5, Math.min(60, Number(e.target.value) || 20));
+  e.target.value = settings.breakEvery;
+  saveSettings();
+};
+
+let blinkAcc = 0, breakAcc = 0, breakTimer = null;
+function flashBlink() {
+  const c = $('blink-cue');
+  c.classList.remove('show'); void c.offsetWidth; // restart the CSS pulse
+  c.classList.add('show');
+}
+function takeBreak() {
+  if (cur?.playing) pause();
+  let left = 20;
+  $('break-count').textContent = left;
+  $('breakmodal').hidden = false;
+  clearInterval(breakTimer);
+  breakTimer = setInterval(() => {
+    left -= 1;
+    $('break-count').textContent = Math.max(0, left);
+    if (left <= 0) clearInterval(breakTimer);
+  }, 1000);
+}
+function endBreak() { clearInterval(breakTimer); $('breakmodal').hidden = true; }
+$('break-skip').onclick = endBreak;
+$('breakmodal').onclick = (e) => { if (e.target === $('breakmodal')) endBreak(); };
+// 1s tick: blink nudge every 20s of reading; look-away break every N minutes
+setInterval(() => {
+  if (!cur?.playing) return;
+  if (settings.blinkCues && ++blinkAcc >= 20) { blinkAcc = 0; flashBlink(); }
+  if (settings.breakReminders && ++breakAcc >= settings.breakEvery * 60) { breakAcc = 0; takeBreak(); }
+}, 1000);
 
 // ---------- add text / URL (paste only — sources have their own toggles) ----------
 $('add-btn').onclick = () => { $('add').hidden = false; $('add-text').focus(); };

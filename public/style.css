@@ -570,6 +570,24 @@ a.btn { text-decoration: none; display: inline-block; }
 #s-aikey { margin: 9px 0; }
 #s-aikey-status { font-size: 12.5px; }
 
+/* ---------- eye relief ---------- */
+.s-h { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 16px 0 4px; }
+#s-presets { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 8px; }
+#s-presets .preset {
+  flex: 1 1 0; min-width: 60px; cursor: pointer; font: inherit; font-size: 11px;
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 4px; text-align: center;
+}
+#s-presets .preset:hover { outline: 2px solid var(--accent); }
+.break-count { text-align: center; font-size: 32px; font-weight: 600; color: var(--accent); margin: 8px 0; font-variant-numeric: tabular-nums; }
+/* blink nudge — a quiet pulse near the bottom of the reader */
+#blink-cue {
+  position: absolute; left: 0; right: 0; bottom: 14px;
+  text-align: center; font-size: 11px; letter-spacing: .35em; text-transform: uppercase;
+  color: var(--accent); opacity: 0; pointer-events: none;
+}
+#blink-cue.show { animation: blink-pulse 1.4s ease; }
+@keyframes blink-pulse { 0%, 100% { opacity: 0; } 25%, 55% { opacity: .8; } }
+
 #toast {
   position: fixed;
   bottom: 18px;
@@ -613,4 +631,21 @@ a.btn { text-decoration: none; display: inline-block; }
   }
   #top:not(.closed) .col { width: 100%; min-width: 0; flex: none; }
   #top:not(.closed) .col-body { flex: none; overflow: visible; }
+
+  /* transcript "halo": the RSVP word is left exactly as-is, pinned between its
+     two guide lines (the hard edges). The transcript fills the reader behind it
+     and scrolls so the current word sits masked in the centre — context reads
+     above the top line and below the bottom line. */
+  #reader.reading-script #transcript {
+    position: absolute; inset: 0; z-index: 1; flex: none;
+    padding: 46vh 18px; /* lets the first and last word reach the centre */
+  }
+  #reader.reading-script #stage {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    flex: none; min-height: 0; padding: 0; z-index: 2; background: var(--reader-bg);
+  }
+  #reader.reading-script #progress { position: absolute; top: 0; left: 0; right: 0; z-index: 3; }
+  #reader.reading-script #hud {
+    position: absolute; bottom: 0; left: 0; right: 0; z-index: 3; background: var(--reader-bg);
+  }
 }
