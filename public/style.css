@@ -50,6 +50,7 @@ body {
   gap: 6px;
   padding: 5px 10px;
   flex: none;
+  position: relative; /* anchor for the mobile ⋯ more-menu */
 }
 .brand { font-weight: 600; font-size: 12px; letter-spacing: .02em; white-space: nowrap; }
 .brand .rr { color: var(--accent); }
@@ -257,6 +258,9 @@ body {
 #reader[hidden] { display: none; }
 /* ✕ on the left, vertically centered on the word (midpoint of the two guides) */
 #close-reader { position: absolute; top: 50%; left: 8px; transform: translateY(-50%); z-index: 6; }
+/* the ✕ rides the word's own vertical centre (between the guides), not the
+   stage's — so it never drifts when the stage gets top padding on phones */
+#word-line { position: relative; width: 100%; }
 /* the reader's now-reading controls (title · sections · source) live up in the
    header bar as one boxed unit, centered between the spacers — so the
    ⚡ live-highlight title reads as the source, not a toggle */
@@ -603,6 +607,16 @@ a.btn { text-decoration: none; display: inline-block; }
   pointer-events: none;
 }
 
+/* mobile "⋯ more" menu — tucks the desktop-leaning header tools into a dropdown
+   on phones (desktop: hidden, the tools live inline in the bar) */
+#more-btn { display: none; }
+#more-menu {
+  display: none; position: absolute; top: calc(100% + 4px); right: 6px;
+  flex-direction: column; gap: 2px; min-width: 190px; max-width: 78vw;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 6px; z-index: 50; box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
+}
+
 /* ---------- phones (≤640px): the reader owns the screen ---------- */
 /* On a narrow viewport the six-column backlog can't show meaningfully and the
    header overflows off the right edge. So on phones: compact the header to its
@@ -637,4 +651,16 @@ a.btn { text-decoration: none; display: inline-block; }
      faint text above and below. */
   #reader.reading-script #stage { flex: none; min-height: 0; padding: 18vh 0 0; }
   #reader.reading-script #transcript { flex: 1; }
+
+  /* the ⋯ button appears; its menu reveals the tucked tools as labelled rows */
+  #more-btn { display: inline-flex; }
+  #more-menu.open { display: flex; }
+  #more-menu.open > * {
+    display: flex; align-items: center; justify-content: flex-start; gap: 10px;
+    width: 100%; height: auto; min-width: 0; padding: 9px 11px; border-radius: 8px;
+    font-size: 13px; color: var(--fg); opacity: 1; text-align: left;
+  }
+  #more-menu.open > *:hover { background: rgba(255, 255, 255, .07); }
+  #more-menu.open > [data-more]::after { content: attr(data-more); }
+  #more-menu .sources { flex-wrap: wrap; border: 0; }
 }
