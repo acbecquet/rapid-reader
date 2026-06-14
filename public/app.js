@@ -155,6 +155,7 @@ async function refresh() {
     }
     cleanupNoise();    // once: drop stale observer/sessions noise
     reconcileBooks();  // number + title every book chapter, a batch per poll
+    maybePromptForKey(); // nudge signed-in guests to add their own free key
   } catch (e) {
     setStatus(
       e.code === 401 || e.code === 503
@@ -1182,10 +1183,10 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
-    if (e.key === 'Escape') $(open).hidden = true;
+    if (e.key === 'Escape') { if (open === 'keymodal') closeKeyModal(); else $(open).hidden = true; }
     return;
   }
   if (e.key === 'Escape') {
@@ -1218,6 +1219,13 @@ function fillSettingsForm() {
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
   $('s-noai').checked = settings.aiDisabled;
+  // Bring-your-own Gemini key — manageable here once you can sync (have a token)
+  const hasKey = !!prefs?.hasGeminiKey;
+  $('s-aikey').hidden = !settings.token;
+  $('s-aikey-status').innerHTML = hasKey
+    ? '✓ Your own Gemini key is set — titles run on your quota.'
+    : 'No personal key yet. Add a <span class="free">free</span> Gemini key to run AI titles on your own quota.';
+  $('s-aikey-btn').textContent = hasKey ? 'Replace your Gemini key' : 'Add your free Gemini key';
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
 }
@@ -1566,6 +1574,77 @@ $('s-copytoken').onclick = async () => {
     toast('Copy failed — token is in the field below');
   }
 };
+
+// ---------- bring-your-own Gemini key (each user spends their own free quota) ----------
+// Stored server-side per user (api/prefs geminiKey); the raw key never comes
+// back to the browser — the poll only tells us hasGeminiKey / needsGeminiKey.
+let keyPromptShown = false; // once per session — don't renag on every poll
+
+function setKeyMsg(msg, err) {
+  const el = $('key-msg');
+  el.textContent = msg || '';
+  el.hidden = !msg;
+  el.classList.toggle('err', !!err);
+}
+
+function openKeyModal() {
+  const hasKey = !!prefs?.hasGeminiKey;
+  $('key-title').textContent = hasKey ? 'Replace your Gemini key' : 'One quick setup step';
+  $('key-input').value = '';
+  $('key-skip').textContent = hasKey ? 'Cancel' : 'Skip for now';
+  setKeyMsg('');
+  $('keymodal').hidden = false;
+  $('key-input').focus();
+}
+function closeKeyModal() {
+  $('keymodal').hidden = true;
+  keyPromptShown = true;
+}
+
+// Auto-nudge: only signed-in Google users who still need a key, never if
+// they've turned AI off — and at most once per session.
+function maybePromptForKey() {
+  if (keyPromptShown || !settings.account || settings.aiDisabled) return;
+  if (!prefs?.needsGeminiKey) return;
+  keyPromptShown = true;
+  openKeyModal();
+}
+
+async function saveKey() {
+  const key = $('key-input').value.trim();
+  if (!key) return setKeyMsg('Paste your key first — or tap Get your free key above.', true);
+  setKeyMsg('Checking your key…');
+  $('key-save').disabled = true;
+  try {
+    const { prefs: np } = await api('PATCH', 'prefs', { body: { geminiKey: key } });
+    prefs = np;
+    applyPrefs();
+    fillSettingsForm();
+    closeKeyModal();
+    toast('Gemini key saved — you’re all set ⚡');
+  } catch (e) {
+    setKeyMsg(e.message || 'That didn’t work — double-check the key and try again.', true);
+  } finally {
+    $('key-save').disabled = false;
+  }
+}
+
+$('key-get').onclick = () => { keyPromptShown = true; }; // they're getting one — stop nagging
+$('key-paste').onclick = async () => {
+  try {
+    const t = (await navigator.clipboard.readText()).trim();
+    if (t) { $('key-input').value = t; setKeyMsg(''); }
+    else setKeyMsg('Clipboard is empty — copy your key first, then tap 📋 again.', true);
+  } catch {
+    setKeyMsg('Couldn’t read the clipboard — paste the key into the box by hand.', true);
+    $('key-input').focus();
+  }
+};
+$('key-save').onclick = saveKey;
+$('key-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
+$('key-skip').onclick = closeKeyModal;
+$('keymodal').onclick = (e) => { if (e.target === $('keymodal')) closeKeyModal(); };
+$('s-aikey-btn').onclick = () => { $('settings').hidden = true; openKeyModal(); };
 
 // ---------- share target intake (PWA: select → share → Rapid Reader) ----------
 async function intakeShared() {

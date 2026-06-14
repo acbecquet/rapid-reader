@@ -140,8 +140,11 @@ an agent session — it uses your `GEMINI_API_KEY`.
    - `RAPID_READER_TOKEN` — any long random string; this is your private key.
    - `TELEGRAM_WEBHOOK_SECRET`, `EMAIL_WEBHOOK_SECRET` *(optional)* — random
      strings that authorize the Telegram/email ingestion endpoints (below).
-   - `GEMINI_API_KEY` / `MINIMAX_API_KEY` *(optional)* — only used by the
-     `title.js` helper; capture itself does no AI, so these are not required.
+   - `GEMINI_API_KEY` / `MINIMAX_API_KEY` *(optional)* — the owner's fallback
+     for the `title.js` helper; capture itself does no AI, so these are not
+     required. Each signed-in user is prompted to add their **own free Gemini
+     key** (stored per-user), so the tester pool spends their own quota, not
+     yours. Guests with no key simply get the instant first-words titles.
 4. Redeploy. Open the app and visit `https://your-app.vercel.app/?token=YOURTOKEN`
    once per device to self-configure.
 

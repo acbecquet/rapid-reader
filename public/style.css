@@ -545,6 +545,27 @@ a.btn { text-decoration: none; display: inline-block; }
 .modal-card .row.right { justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .modal-card textarea { resize: vertical; }
 
+/* ---------- bring-your-own Gemini key ---------- */
+/* "free" reads as the reassurance it is — the wavy underline echoes the ~free~ */
+.free {
+  color: #2e9e5b;
+  font-weight: 600;
+  text-decoration: underline wavy;
+  text-decoration-color: #2e9e5b;
+  text-underline-offset: 3px;
+}
+.keysteps { margin: 4px 0 12px; padding-left: 18px; font-size: 11.5px; color: var(--dim); }
+.keysteps li { margin: 3px 0; }
+#key-get { display: block; text-align: center; margin: 2px 0 12px; }
+.keypaste { gap: 6px; }
+.keypaste #key-input { flex: 1; margin-top: 0; }
+.keypaste #key-paste { flex: none; padding: 6px 10px; }
+.keymsg { font-size: 11px; margin: 10px 0 0; color: var(--dim); }
+.keymsg.err { color: #e8a13c; }
+.keymsg[hidden] { display: none; }
+#s-aikey { margin: 9px 0; }
+#s-aikey-status { font-size: 12.5px; }
+
 #toast {
   position: fixed;
   bottom: 18px;

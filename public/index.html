@@ -116,6 +116,10 @@
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
+      <div id="s-aikey" hidden>
+        <div id="s-aikey-status" class="acct-line"></div>
+        <button id="s-aikey-btn" class="btn ghost" type="button">Add your free Gemini key</button>
+      </div>
       <div id="s-account" hidden>
         <div class="acct-line">Signed in as <span id="s-email"></span></div>
         <div class="row">
@@ -230,6 +234,27 @@
 
       <p class="hint">Tip: start in <b>Build</b> mode (it eases you up from 200 WPM), slow down for hard passages, and don't chase the highest number. Comprehension is the point.</p>
       <div class="row right"><button id="info-close" class="btn">Done</button></div>
+    </div>
+  </div>
+
+  <div id="keymodal" class="modal" hidden>
+    <div class="modal-card">
+      <h2 id="key-title">One quick setup step</h2>
+      <p class="hint">Rapid Reader uses Google's Gemini to write sharp little titles for everything you capture. Drop in your own <span class="free">free</span> Gemini API key so you're reading on your own quota — about thirty seconds.</p>
+      <ol class="keysteps">
+        <li>Open Google AI Studio and create a key (it's free).</li>
+        <li>Copy it, come back, and paste it below.</li>
+      </ol>
+      <a id="key-get" class="btn" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">Get your free key ↗</a>
+      <div class="row keypaste">
+        <input id="key-input" type="password" placeholder="Paste your key (AIza…)" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <button id="key-paste" class="btn ghost" type="button" title="Paste from clipboard">📋</button>
+      </div>
+      <p id="key-msg" class="keymsg" hidden></p>
+      <div class="row right">
+        <button id="key-skip" class="btn ghost" type="button">Skip for now</button>
+        <button id="key-save" class="btn" type="button">Save key</button>
+      </div>
     </div>
   </div>
 

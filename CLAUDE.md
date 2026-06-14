@@ -17,7 +17,9 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
     multiselect, source toggles, stats, sessions.
 - `api/items.js` — backlog endpoint. GET returns lean index stubs + live + prefs;
   GET `?id` loads one body to read; POST/PATCH/DELETE. No AI on the hot path.
-- `api/prefs.js` — per-user ⚡ capture gate, source on/off toggles, column layout.
+- `api/prefs.js` — per-user ⚡ capture gate, source on/off toggles, column
+  layout, and the user's own free Gemini key (validated on save; the raw key is
+  stored but never returned — responses carry only hasGeminiKey/needsGeminiKey).
 - `api/health.js` — storage probe ({ redis, blob, persistent }); open it to see
   whether the backlog will persist.
 - `api/log.js` — frontend error/anomaly log (capped, deduped per signature) so
@@ -83,7 +85,8 @@ optional decoration; apply them to every change.
   chapter sharing a `bookId`/`group`, with a `bookmarkAt` marking the current
   chapter. Same `sessionId` upserts in place + bumps to top.
 - Redis keys via `keyFor(base, uid)`: `rr:items[:uid]` lean index (cap 5000),
-  `rr:prefs[:uid]` (capture gate + source toggles + columns), `rr:stats[:uid]`
+  `rr:prefs[:uid]` (capture gate + source toggles + columns + the user's own
+  Gemini key, redacted out of every client response), `rr:stats[:uid]`
   daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless
   HMAC session token (Google sign-in via `api/login.js`, or the owner/dev
   token → uid `owner`). No passwords, no server-side sessions, no billing.
