@@ -36,7 +36,7 @@ test('compileTranscript renders a faithful, readable conversation', () => {
     { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Added the join flow and a test.' }] } },
   ]);
   const { md, firstPrompt } = compileTranscript(codex);
-  assert.ok(md.startsWith('# add a join option for squad players'));
+  assert.ok(md.startsWith('> add a join option for squad players'));
   assert.ok(md.includes('Added the join flow'));
   assert.equal(firstPrompt, 'add a join option for squad players');
 });

@@ -7,11 +7,11 @@ export const SOURCES = ['claude_code', 'codex', 'copilot', 'docs', 'email', 'tel
 
 // The five default columns and which source types fall into each.
 export const DEFAULT_COLUMNS = [
-  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot'] },
+  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'books', name: 'Books', icon: 'book', sources: ['book'] },
   { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
   { id: 'news', name: 'News', icon: 'news', sources: ['article', 'web'] },
-  { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'telegram', 'other'] },
+  { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'other'] },
 ];
 
 export function defaultPrefs() {

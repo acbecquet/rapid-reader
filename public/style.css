@@ -344,6 +344,17 @@ body {
   word-break: break-all;
 }
 #transcript p.h { color: var(--reader-fg); font-weight: 600; margin-top: 14px; }
+/* agent/chat transcript: your prompts right-aligned + labelled, like a chat */
+#transcript p.you { text-align: right; color: var(--reader-fg); }
+#transcript p.you .you-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+#transcript p.quote { border-left: 2px solid var(--line); padding-left: 10px; font-style: italic; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;
@@ -461,6 +472,11 @@ a.btn { text-decoration: none; display: inline-block; }
   margin-left: 4px;
 }
 .modal-card.wide { max-width: 480px; }
+/* settings panel: 25% wider, a touch larger type, tighter rows */
+#settings .modal-card { max-width: 400px; }
+#settings .modal-card h2 { font-size: 15px; }
+#settings .modal-card label { font-size: 13px; margin: 7px 0; }
+#settings .modal-card .hint, #settings .acct-line { font-size: 12.5px; }
 .modal-card pre {
   background: var(--bg);
   border: 1px solid var(--line);

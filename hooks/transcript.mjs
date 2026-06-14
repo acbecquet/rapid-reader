@@ -94,8 +94,7 @@ export function compileTranscript(jsonl) {
       if (INJECTED.test(m.text)) continue;
       const flat = m.text.replace(/\s+/g, ' ').trim();
       if (!firstPrompt) firstPrompt = flat;
-      const words = flat.split(' ');
-      out.push('# ' + words.slice(0, 12).join(' ') + (words.length > 12 ? '…' : ''));
+      out.push('> ' + flat); // the prompt you wrote → a "You wrote:" turn in the reader
     } else {
       out.push(m.text);
     }
