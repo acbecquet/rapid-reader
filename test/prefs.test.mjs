@@ -21,7 +21,7 @@ test('defaults: capture on, all sources on, five columns', () => {
   assert.equal(d.capture, true);
   assert.deepEqual(Object.keys(d.sources).sort(), [...SOURCES].sort());
   assert.equal(d.columns.length, 5);
-  assert.deepEqual(d.columns.map((c) => c.id), ['agents', 'books', 'email', 'news', 'general']);
+  assert.deepEqual(d.columns.map((c) => c.id), ['books', 'news', 'agents', 'general', 'email']);
 });
 
 test('mergePrefs fills missing fields over stored partials', () => {
