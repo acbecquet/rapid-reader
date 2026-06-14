@@ -15,7 +15,6 @@ const DEFAULTS = {
   mode: 'standard', // 'standard' | 'build'
   autoplay: false, // open an item already playing (vs. paused) when you click it
   keepOpen: true, // keep the backlog visible while reading
-  chapterTitles: true, // AI-fill a book chapter's title when the EPUB gives none
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
   token: '',
@@ -302,6 +301,9 @@ function agentPicker() {
 
 // collapsed project groups, persisted: keyed `${columnId}/${group}`
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem('rr:collapsed') || '[]'));
+// where you left off in each non-agent panel (columnId → itemId), persisted so
+// it's easy to resume your spot after days away
+const resumeMap = JSON.parse(localStorage.getItem('rr:resume') || '{}');
 function toggleGroup(gkey) {
   collapsedGroups.has(gkey) ? collapsedGroups.delete(gkey) : collapsedGroups.add(gkey);
   localStorage.setItem('rr:collapsed', JSON.stringify([...collapsedGroups]));
@@ -397,8 +399,22 @@ function renderColBody(body, col, list) {
     const collapsed = collapsedGroups.has(gkey);
     const gh = document.createElement('div');
     gh.className = 'group' + (collapsed ? ' collapsed' : '');
-    const bmHint = bm?.bookmarkAt ? `<span class="g-bm">📖 ${(bm.chapterIndex || 0) + 1}/${gItems.length}</span>` : '';
-    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>${bmHint}<span class="g-c">${gItems.length}</span>`;
+    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>`;
+    if (bm?.bookmarkAt) {
+      // one-click resume — open the bookmarked chapter at its saved spot, even
+      // when the book is collapsed and you've been away for days
+      const chNum = (bm.title.match(/chapter\s+(\d+)/i) || [])[1];
+      const badge = document.createElement('button');
+      badge.className = 'g-bm';
+      badge.textContent = '📖 ' + (chNum ? 'Ch ' + chNum : 'resume');
+      badge.title = 'Resume — ' + bm.title;
+      badge.onclick = (e) => { e.stopPropagation(); openItem(bm); };
+      gh.append(badge);
+    }
+    const gc = document.createElement('span');
+    gc.className = 'g-c';
+    gc.textContent = gItems.length;
+    gh.append(gc);
     gh.onclick = () => toggleGroup(gkey);
     body.append(gh);
     if (!collapsed) for (const it of gItems) body.append(itemRow(it, col.id, gItems, it === bm && !!bm.bookmarkAt));
@@ -413,6 +429,7 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (it.readAt ? '' : ' unread')
     + (cur?.item.id === it.id ? ' active' : '')
     + (isBookmark ? ' bookmark' : '')
+    + (resumeMap[colId] === it.id && cur?.item.id !== it.id ? ' resume' : '')
     + (selected.has(it.id) ? ' sel' : '');
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
@@ -913,6 +930,11 @@ async function openItem(item, { start = true } = {}) {
     item.bookmarkAt = Date.now();
     api('PATCH', 'items', { body: { id: item.id, bookmarkAt: item.bookmarkAt } }).catch(() => {});
   }
+  // remember this as the resume point for its panel (agents stay live, excluded)
+  if (!item.live && !AGENT_SOURCES.has(item.sourceType)) {
+    resumeMap[columnFor(item)] = item.id;
+    localStorage.setItem('rr:resume', JSON.stringify(resumeMap));
+  }
   $('empty').hidden = true;
   $('reader').hidden = false;
   $('now-reading').hidden = false;
@@ -1185,7 +1207,6 @@ function fillSettingsForm() {
   $('s-mode').value = settings.mode;
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
-  $('s-chaptertitles').checked = settings.chapterTitles;
   $('s-noai').checked = settings.aiDisabled;
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
@@ -1222,7 +1243,6 @@ $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
 bind('s-mode', 'mode');
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
-bind('s-chaptertitles', 'chapterTitles');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
 
@@ -1277,46 +1297,44 @@ $('add-epub').onchange = async (e) => {
   }
 };
 
-// ---------- books: number + title every chapter, until none are raw ----------
-// On each poll we reconcile every book in reading order using the shared
-// classifier (epub.js): front matter, the title page, dividers, and back matter
-// keep their own name and take no number; the first real chapter is "Chapter 1"
-// and the rest count up. Numbers apply instantly; missing descriptions are
-// AI-filled a few per poll, so even a large book converges over successive polls.
-const bookFixDone = new Set(); // id|target already PATCHed this session (no loops)
+// ---------- books: number every chapter once, then leave it alone ----------
+// Numbers + the book's own explicit chapter names only — never AI-written
+// descriptions (those spoil the story and burn tokens). Each book is reconciled
+// ONCE per numbering version with the shared epub.js classifier; bump BOOK_VER
+// to backfill every loaded book exactly once. Only the title relabels, so your
+// place (bookmark + progress) is never touched — "Chapter 17" just becomes
+// "Chapter 14".
+const BOOK_VER = 1;
+const bookVer = JSON.parse(localStorage.getItem('rr:bookVer') || '{}');
 function reconcileBooks() {
   const byBook = new Map();
   for (const it of items) if (it.bookId && !it.archivedAt) {
     (byBook.get(it.bookId) || byBook.set(it.bookId, []).get(it.bookId)).push(it);
   }
-  const numFix = []; // {it,title} — instant, no AI
-  const aiFix = [];  // {it,num}   — needs an AI description
-  for (const chs of byBook.values()) {
+  const fixes = [];
+  let saved = false;
+  for (const [bookId, chs] of byBook) {
+    if (bookVer[bookId] === BOOK_VER) continue; // already numbered at this version — never again
     chs.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
     const bookTitle = (chs[0]?.group || '').split(' — ')[0];
     const marks = E.enumerateChapters(chs.map((it) => it.title), bookTitle);
+    const bookFixes = [];
     chs.forEach((it, i) => {
       const { num, category } = marks[i];
-      const desc = E.bareTitle(it.title);
-      let want;
-      if (category !== 'chapter') want = desc || it.title;             // front/divider/back: name only
-      else if (desc) want = `Chapter ${num} · ${desc}`.slice(0, 120);   // renumber + keep description
-      else if (settings.chapterTitles && !settings.aiDisabled) { aiFix.push({ it, num }); return; }
-      else want = `Chapter ${num}`;
-      if (it.title !== want && !bookFixDone.has(it.id + '|' + want)) numFix.push({ it, title: want });
+      const name = E.bareTitle(it.title); // the book's explicit chapter name, if any
+      const want = category !== 'chapter' ? (name || it.title)
+        : name ? `Chapter ${num} · ${name}`.slice(0, 120)
+        : `Chapter ${num}`;
+      if (it.title !== want) bookFixes.push({ it, title: want });
     });
+    if (bookFixes.length) fixes.push(...bookFixes);
+    else { bookVer[bookId] = BOOK_VER; saved = true; } // converged → mark done, skip forever
   }
-  const ai = aiFix.filter((f) => !bookFixDone.has(f.it.id + '|ai'));
-  if (!numFix.length && !ai.length) return;
-  for (const f of numFix.slice(0, 50)) {
-    bookFixDone.add(f.it.id + '|' + f.title);
-    f.it.title = f.title; // optimistic — shows on the next render
+  if (saved) localStorage.setItem('rr:bookVer', JSON.stringify(bookVer));
+  if (!fixes.length) return;
+  for (const f of fixes.slice(0, 60)) {
+    f.it.title = f.title; // optimistic — renumbers in place, your spot is unchanged
     api('PATCH', 'items', { body: { id: f.it.id, title: f.title } }).catch(() => {});
-  }
-  for (const f of ai.slice(0, 6)) {
-    bookFixDone.add(f.it.id + '|ai');
-    f.it.title = `Chapter ${f.num}`; // show the number now; AI fills the description
-    api('PATCH', 'items', { body: { id: f.it.id, retitle: true, book: true, num: f.num } }).catch(() => {});
   }
   lastRender = ''; renderColumns();
 }

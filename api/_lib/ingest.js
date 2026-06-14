@@ -54,7 +54,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
       if (g) prev.group = g;
       Object.assign(prev, bookFields);
       prev.createdAt = when; // bump recency so live updates sort to the top
-      prev.readAt = null;
+      prev.readAt = bookId ? prev.readAt : null; // re-importing a book keeps your read state
       await setDoc(KEY_U, [prev, ...items.filter((it) => it !== prev)].slice(0, CAP));
       return { item: prev, updated: true };
     }

@@ -178,8 +178,12 @@ body {
 .col-body .group .g-n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-body .group .g-c { opacity: .7; }
 .col-body .group .g-bm { color: var(--accent); font-size: 9px; margin-right: 4px; }
+.col-body .group button.g-bm { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; }
+.col-body .group button.g-bm:hover { filter: brightness(1.3); }
 .item.bookmark { border-left-color: var(--accent); }
 .item.bookmark .t { color: var(--fg); }
+/* where you left off in a panel (not currently open) — a quiet marker */
+.item.resume { border-left-color: #5a5a6a; }
 .item {
   position: relative;
   display: flex;

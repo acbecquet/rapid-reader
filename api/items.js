@@ -90,17 +90,7 @@ export default async function handler(req, res) {
     if (body.retitle) {
       const text = await getBody(uid, item.id, item.bodyUrl);
       const t = await makeTitle(text, body.model === 'minimax' ? 'minimax' : undefined);
-      if (body.book) {
-        // book chapter: keep the number (explicit `num`, else from the current
-        // title) and let the AI supply only the description — never re-echoing
-        // it. Falls back to a bare "Chapter N" when no LLM is available.
-        const num = Number.isFinite(+body.num) ? Math.trunc(+body.num) : null;
-        const pre = num != null ? `Chapter ${num}` : (item.title.match(/^chapter\s+\d+/i) || [])[0] || '';
-        const desc = t ? t.replace(/^chapter\s+[0-9ivxlcdm]+\s*[·:.\-—]?\s*/i, '').replace(/^#{1,6}\s*/, '').trim() : '';
-        if (pre || desc) item.title = `${pre}${pre && desc ? ' · ' : ''}${desc}`.slice(0, 120);
-      } else if (t) {
-        item.title = t.slice(0, 120);
-      }
+      if (t) item.title = t.slice(0, 120);
     }
     if ('title' in body) item.title = String(body.title).slice(0, 120);
     if ('readAt' in body) item.readAt = body.readAt;
