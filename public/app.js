@@ -1348,6 +1348,32 @@ setInterval(() => {
   if (settings.breakReminders && ++breakAcc >= settings.breakEvery * 60) { breakAcc = 0; takeBreak(); }
 }, 1000);
 
+// ---------- mobile "⋯ more" menu ----------
+// The desktop-leaning header tools don't fit a phone bar, so on narrow screens
+// we relocate them into a dropdown (kept inline on desktop). Capture each tool's
+// home slot now, before any move, so we can put them back when the window widens.
+const MORE_IDS = ['mcp-init', 'mcp-status', 'status', 'info-btn', 'capture-btn', 'epub-btn', 'sources', 'stats-btn', 'cols-btn'];
+const moreEls = MORE_IDS.map((id) => $(id)).filter(Boolean);
+const moreHome = new Map(moreEls.map((el) => [el, [el.parentElement, el.nextElementSibling]]));
+function layoutTools() {
+  const menu = $('more-menu');
+  if (isMobile()) {
+    moreEls.forEach((el) => { if (el.parentElement !== menu) menu.appendChild(el); });
+  } else {
+    menu.classList.remove('open');
+    // restore in reverse so each tool's original next-sibling is already back
+    [...moreEls].reverse().forEach((el) => {
+      const [parent, next] = moreHome.get(el);
+      if (el.parentElement !== parent) parent.insertBefore(el, next);
+    });
+  }
+}
+$('more-btn').onclick = (e) => { e.stopPropagation(); $('more-menu').classList.toggle('open'); };
+$('more-menu').onclick = (e) => e.stopPropagation(); // keep open while using the tools
+document.addEventListener('click', () => $('more-menu').classList.remove('open'));
+addEventListener('resize', layoutTools);
+layoutTools();
+
 // ---------- add text / URL (paste only — sources have their own toggles) ----------
 $('add-btn').onclick = () => { $('add').hidden = false; $('add-text').focus(); };
 $('add-cancel').onclick = () => { $('add').hidden = true; };
