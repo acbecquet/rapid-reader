@@ -5,6 +5,10 @@ import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 
+// On phones the RSVP reader takes the whole screen; the backlog and transcript
+// live behind toggles instead of splitting the small viewport. This gates those.
+const isMobile = () => matchMedia('(max-width: 640px)').matches;
+
 // ---------- settings ----------
 const DEFAULTS = {
   font: 'system-ui, sans-serif',
@@ -22,7 +26,11 @@ const DEFAULTS = {
   token: '',
   account: null, // { name, email } when signed in with Google
 };
-let settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('rr:settings') || '{}') };
+const storedSettings = JSON.parse(localStorage.getItem('rr:settings') || '{}');
+let settings = { ...DEFAULTS, ...storedSettings };
+// Phones: the word should own the screen, so the transcript starts off (toggle
+// ¶ to bring it up) unless this device has explicitly chosen otherwise.
+if (isMobile() && !('transcript' in storedSettings)) settings.transcript = false;
 
 function saveSettings() {
   localStorage.setItem('rr:settings', JSON.stringify(settings));
@@ -947,7 +955,7 @@ async function openItem(item, { start = true } = {}) {
   $('keep-btn').hidden = !item.live;
   buildSectionNav();
   buildTranscript();
-  if (!settings.keepOpen) setBacklog(false);
+  if (!settings.keepOpen || isMobile()) setBacklog(false); // phones: reader full-screen
   renderColumns();
   if (start) {
     play();
@@ -1677,6 +1685,7 @@ applySettings();
 fillSettingsForm();
 updateConnectLabel();
 initAuth();
+if (isMobile()) setBacklog(false); // phones start on the full-screen reader; ▾ opens the backlog sheet
 // /?item=<id> (e.g. MCP playbackUrl) deep-links straight into an item.
 const wantedItem = new URLSearchParams(location.search).get('item');
 intakeShared().then(refresh).then(() => {
