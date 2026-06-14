@@ -859,7 +859,7 @@ function maybeOpenLive(live) {
   openItem({
     id: '__live__',
     live: true,
-    title: '⚡ ' + (source || 'live highlight'),
+    title: source || 'Highlight', // the red ⚡ capture button already signals highlight mode
     text: live.text,
     url: live.url || '',
     sourceType: 'web',
@@ -952,7 +952,7 @@ async function openItem(item, { start = true } = {}) {
   }
 }
 
-$('close-reader').onclick = () => closeReader();
+$('close-reader').onclick = (e) => { e.stopPropagation(); closeReader(); };
 
 // Update the open item's content in place when it grows (e.g. a live agent
 // session) WITHOUT moving your RSVP spot, pausing, or yanking the reader —
@@ -1298,13 +1298,12 @@ $('add-epub').onchange = async (e) => {
 };
 
 // ---------- books: number every chapter once, then leave it alone ----------
-// Numbers + the book's own explicit chapter names only — never AI-written
-// descriptions (those spoil the story and burn tokens). Each book is reconciled
-// ONCE per numbering version with the shared epub.js classifier; bump BOOK_VER
-// to backfill every loaded book exactly once. Only the title relabels, so your
-// place (bookmark + progress) is never touched — "Chapter 17" just becomes
-// "Chapter 14".
-const BOOK_VER = 1;
+// Book chapters are numbers only — "Chapter N" — never descriptions (the EPUB's
+// or an AI's), which spoil the story. Front matter / dividers keep their own
+// name. Each book is reconciled ONCE per numbering version with the shared
+// epub.js classifier; bump BOOK_VER to re-clean every loaded book exactly once.
+// Only the title relabels, so your place (bookmark + progress) is never touched.
+const BOOK_VER = 2;
 const bookVer = JSON.parse(localStorage.getItem('rr:bookVer') || '{}');
 function reconcileBooks() {
   const byBook = new Map();
@@ -1321,10 +1320,9 @@ function reconcileBooks() {
     const bookFixes = [];
     chs.forEach((it, i) => {
       const { num, category } = marks[i];
-      const name = E.bareTitle(it.title); // the book's explicit chapter name, if any
-      const want = category !== 'chapter' ? (name || it.title)
-        : name ? `Chapter ${num} · ${name}`.slice(0, 120)
-        : `Chapter ${num}`;
+      const want = category !== 'chapter'
+        ? (E.bareTitle(it.title) || it.title)  // front matter / dividers / back keep their own name
+        : `Chapter ${num}`;                    // chapters: number only — strips old AI spoiler titles
       if (it.title !== want) bookFixes.push({ it, title: want });
     });
     if (bookFixes.length) fixes.push(...bookFixes);
@@ -1576,10 +1574,19 @@ intakeShared().then(refresh).then(() => {
   if (it) openItem(it);
 });
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10000);
+// fast lane: the live-highlight slot is tiny, so poll it on its own ~1s — a
+// highlight appears almost instantly instead of waiting for the 10s backlog
+// poll. Skipped when capture is off or the tab is hidden, so it stays cheap.
+async function pollLive() {
+  if (document.visibilityState !== 'visible' || !captureState || !settings.token) return;
+  try { const { live } = await api('GET', 'live'); maybeOpenLive(live); } catch {}
+}
+setInterval(pollLive, 1000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') refresh();
+  if (document.visibilityState === 'visible') { refresh(); pollLive(); }
   else { if (cur) saveProgress(); flushSession(); }
 });
+addEventListener('focus', pollLive);
 addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');

@@ -71,7 +71,7 @@ body {
 .icon-btn.src.on { color: var(--fg); opacity: 1; }
 #capture-btn.on { color: var(--accent); }
 #status {
-  flex: 1;
+  flex: none;
   margin-left: 8px;
   font-size: 9.5px;
   color: var(--dim);
@@ -80,6 +80,8 @@ body {
   text-overflow: ellipsis;
 }
 #status.err { color: #e8a13c; }
+/* flank the now-reading group so it stays centered in the header */
+.bar-spacer { flex: 1 1 0; min-width: 8px; }
 #top.closed #columns, #top.closed #selbar { display: none; }
 .chip {
   background: none;
@@ -251,10 +253,16 @@ body {
 #s-account #s-email { color: var(--fg); }
 #reader { flex: 1; display: flex; flex-direction: column; min-height: 0; position: relative; }
 #reader[hidden] { display: none; }
-#close-reader { position: absolute; top: 4px; left: 8px; z-index: 6; }
+/* ✕ on the left, vertically centered on the word (midpoint of the two guides) */
+#close-reader { position: absolute; top: 50%; left: 8px; transform: translateY(-50%); z-index: 6; }
 /* the reader's now-reading controls (title · sections · source) live up in the
-   header bar; the reader itself is just word + transcript */
-#now-reading { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+   header bar as one boxed unit, centered between the spacers — so the
+   ⚡ live-highlight title reads as the source, not a toggle */
+#now-reading {
+  display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 56vw;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 99px;
+  padding: 2px 5px 2px 11px;
+}
 #now-reading[hidden] { display: none; }
 #item-title {
   font-size: 10.5px;
@@ -264,15 +272,9 @@ body {
   text-overflow: ellipsis;
   max-width: 34vw;
 }
-#now-reading select {
-  background: var(--panel);
-  color: var(--dim);
-  border: 1px solid var(--line);
-  border-radius: 99px;
-  font-size: 9.5px;
-  padding: 2px 6px;
-  max-width: 22vw;
-}
+/* section-jump lives on the [ / ] keys; no dropdown in the header (it doubled
+   the title and crowded the bar) */
+#now-reading select { display: none; }
 #stage {
   flex: 1;
   position: relative;
@@ -286,7 +288,7 @@ body {
 }
 /* with the transcript showing, the word sits in a thin row flush under the
    backlog and the transcript fills the rest of the reader */
-#reader.reading-script #stage { flex: none; min-height: 0; padding: 8px 0 2px; }
+#reader.reading-script #stage { flex: none; min-height: 0; padding: 6px 0; }
 .guide {
   height: 10px;
   position: relative;

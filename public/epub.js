@@ -225,11 +225,11 @@ export async function parseEpub(buf) {
   // pass 2: classify + enumerate — front matter/dividers/back keep their name,
   // the first real chapter is Chapter 1, the rest count up.
   const marks = enumerateChapters(entries.map((e) => e.raw), bookTitle);
-  const chapters = entries.map((e, i) => {
-    if (marks[i].category !== 'chapter') return { title: e.raw || 'Untitled', text: e.text };
-    const { label } = splitHeading(e.raw); // drop any number the heading itself stated
-    return { title: label ? `Chapter ${marks[i].num} · ${label}` : `Chapter ${marks[i].num}`, text: e.text };
-  });
+  const chapters = entries.map((e, i) => (
+    marks[i].category !== 'chapter'
+      ? { title: e.raw || 'Untitled', text: e.text }   // front matter / dividers keep their name
+      : { title: `Chapter ${marks[i].num}`, text: e.text } // chapters: number only — no spoilers
+  ));
   if (!chapters.length) throw new Error('no readable chapters');
   return { title: meta('title') || 'Untitled book', author: meta('creator'), chapters };
 }
