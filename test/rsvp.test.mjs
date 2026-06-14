@@ -68,13 +68,15 @@ test('delayMs scales with wpm', () => {
   assert.equal(delayMs({ w: 'cat' }, 600), 100);
 });
 
-test('buildWpm ramps 80 → target in +20/15s steps', () => {
-  assert.equal(buildWpm(0, 400), 80);
-  assert.equal(buildWpm(14999, 400), 80);
-  assert.equal(buildWpm(15000, 400), 100);
-  assert.equal(buildWpm(45000, 400), 140);
+test('buildWpm ramps 200 → target in configurable steps', () => {
+  assert.equal(buildWpm(0, 400), 200);
+  assert.equal(buildWpm(14999, 400), 200);
+  assert.equal(buildWpm(15000, 400), 220);
+  assert.equal(buildWpm(45000, 400), 260);
   assert.equal(buildWpm(10 * 60000, 400), 400); // capped at target
-  assert.equal(buildWpm(0, 60), 60); // target below start: just target
+  assert.equal(buildWpm(0, 150), 150); // target below start: just target
+  // configurable step + interval: +50 wpm every 10s → 200 + 50*2 at 20s
+  assert.equal(buildWpm(20000, 600, { stepWpm: 50, stepSec: 10 }), 300);
 });
 
 test('remainingMs sums per-token delays', () => {

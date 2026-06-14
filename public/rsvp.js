@@ -65,11 +65,12 @@ export function delayMs(token, wpm) {
   return (60000 / wpm) * delayMultiplier(token);
 }
 
-// Build-up mode: start at 80 WPM, +20 every 15s of play time, capped at target.
-export const BUILD = { startWpm: 80, stepWpm: 20, stepMs: 15000 };
+// Build-up mode: start at 200 WPM, ramp by `stepWpm` every `stepSec` of play
+// time, capped at the target. Step + interval are user-configurable.
+export const BUILD = { startWpm: 200, stepWpm: 20, stepSec: 15 };
 
-export function buildWpm(playedMs, targetWpm) {
-  const wpm = BUILD.startWpm + BUILD.stepWpm * Math.floor(playedMs / BUILD.stepMs);
+export function buildWpm(playedMs, targetWpm, { stepWpm = BUILD.stepWpm, stepSec = BUILD.stepSec } = {}) {
+  const wpm = BUILD.startWpm + stepWpm * Math.floor(playedMs / (stepSec * 1000));
   return Math.min(targetWpm, wpm);
 }
 

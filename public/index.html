@@ -14,12 +14,14 @@
 <div id="app">
   <header id="top">
     <div class="bar">
+      <span class="brand"><span class="rr">R</span>apid <span class="rr">R</span>eader</span>
       <button id="mcp-init" title="Connect this computer — pull in Claude/Codex sessions and highlights">⌁ set up</button>
       <span id="mcp-status" title="Whether agent capture is connected to your queue">
         <span id="mcp-dot" class="off"></span><span id="mcp-label">agents off</span>
       </span>
-      <span class="brand">Rapid Reader</span>
+      <span class="bar-sep">|</span>
       <span id="status">connecting…</span>
+      <button id="info-btn" class="icon-btn" title="What's the point? — the science behind speed reading">ⓘ</button>
       <span class="bar-spacer"></span>
       <span id="now-reading" hidden title="What you're reading, and its source">
         <span id="item-title"></span>
@@ -97,12 +99,20 @@
         <input id="s-wpm-num" type="number" min="100" max="1000" step="10" class="num">
         <input id="s-wpm" type="range" min="100" max="1000" step="10">
       </label>
-      <label>Mode
-        <select id="s-mode">
-          <option value="standard">Standard — constant WPM</option>
-          <option value="build">Build — 80 WPM, +20 every 15s up to target</option>
-        </select>
-      </label>
+      <label>Mode</label>
+      <div id="s-mode" class="seg">
+        <button type="button" class="seg-opt" data-v="standard">Standard</button>
+        <button type="button" class="seg-opt" data-v="build">Build</button>
+      </div>
+      <div id="build-opts" hidden>
+        <p class="hint">Eases you in from 200 WPM up to your target.</p>
+        <label>Ramp <b><span id="bld-step">20</span> wpm</b> per <b><span class="bld-every">15</span>s</b>
+          <input id="s-build-step" type="range" min="5" max="100" step="5">
+        </label>
+        <label>Interval — every <b><span class="bld-every">15</span>s</b>
+          <input id="s-build-every" type="range" min="3" max="60" step="1">
+        </label>
+      </div>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
@@ -193,6 +203,33 @@
       </div>
       <p class="hint" id="mcp-note"></p>
       <div class="row right"><button id="mcp-modal-close" class="btn ghost">Close</button></div>
+    </div>
+  </div>
+
+  <div id="infomodal" class="modal" hidden>
+    <div class="modal-card wide info">
+      <h2>What's the point?</h2>
+      <p><b>Rapid Serial Visual Presentation (RSVP)</b> flashes one word at a time at a fixed spot, so your eyes never move. It was pioneered by MIT psychologist <b>Mary&nbsp;C.&nbsp;Potter</b>, whose experiments showed the brain grasps meaning astonishingly fast — readers could spot a named target picture in a stream shown as briefly as <b>13&nbsp;milliseconds</b> each (<a href="https://link.springer.com/article/10.3758/s13414-013-0605-z" target="_blank" rel="noopener">Potter et al., 2014</a>).</p>
+
+      <h3>Why it can be faster</h3>
+      <p>Ordinary reading spends a real chunk of its time not on words but on <i>moving your eyes</i> — the jumps (saccades) and line-return sweeps between fixations — and on silently sounding words out. RSVP removes the eye movement entirely and nudges you past sub-vocalizing. For reference, typical adult silent reading is about <b>238&nbsp;wpm</b> for non-fiction and <b>260&nbsp;wpm</b> for fiction, with most people between 175–300 (<a href="https://doi.org/10.1016/j.jml.2019.104047" target="_blank" rel="noopener">Brysbaert, 2019</a> — a meta-analysis of 190 studies).</p>
+
+      <h3>The honest trade-off</h3>
+      <p>Speed reading isn't magic. The most thorough review of the science (<a href="https://journals.sagepub.com/doi/10.1177/1529100615623267" target="_blank" rel="noopener">Rayner, Schotter, Masson, Potter &amp; Treiman, 2016</a>) found that pushing speed too high costs comprehension — partly because RSVP removes <i>regressions</i> (re-reading), which the brain uses to repair misunderstandings. So: a comfortable pace for things that matter, faster for the gist.</p>
+
+      <table class="info-tbl">
+        <tr><th>Reading style</th><th>Typical speed</th><th>Comprehension</th></tr>
+        <tr><td>Careful silent reading</td><td>175–300 wpm</td><td>High</td></tr>
+        <tr><td>Skimming</td><td>~400–700 wpm</td><td>Gist only; details drop</td></tr>
+        <tr><td>RSVP (this app)</td><td>you choose</td><td>High at moderate speeds, falls as you push</td></tr>
+      </table>
+      <p class="src">Sources: Brysbaert 2019; Rayner et al. 2016.</p>
+
+      <h3>Easier on the eyes — and for some readers especially</h3>
+      <p>Because the word stays put, RSVP eliminates the constant eye movement of normal reading, which can <b>reduce eye fatigue</b> and feels more comfortable, particularly on small screens. It also helps people whose eyes can't sweep a page easily: for <b>older readers and those with central-vision loss</b> (e.g. age-related macular degeneration), one fixed reading point is a genuine aid — a training study of observers averaging ~74 years old improved their RSVP reading speed by about <b>53%</b> (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3053100/" target="_blank" rel="noopener">Yu et&nbsp;al., central-vision-loss study</a>; overview: <a href="https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation" target="_blank" rel="noopener">Wikipedia — RSVP</a>).</p>
+
+      <p class="hint">Tip: start in <b>Build</b> mode — it eases you up from 200 WPM — slow down for hard passages, and don't chase the highest number. Comprehension is the point.</p>
+      <div class="row right"><button id="info-close" class="btn">Done</button></div>
     </div>
   </div>
 

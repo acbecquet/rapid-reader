@@ -13,6 +13,8 @@ const DEFAULTS = {
   bg: '#101014',
   wpm: 600,
   mode: 'standard', // 'standard' | 'build'
+  buildStep: 20, // build mode: wpm added each interval
+  buildEvery: 15, // build mode: interval in seconds
   autoplay: false, // open an item already playing (vs. paused) when you click it
   keepOpen: true, // keep the backlog visible while reading
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
@@ -585,7 +587,9 @@ let timer = null;
 let sess = null; // { sourceType, playbackMs, words, pauses, rewinds, skips, completed }
 
 function currentWpm() {
-  return settings.mode === 'build' ? R.buildWpm(cur.playedMs, settings.wpm) : settings.wpm;
+  return settings.mode === 'build'
+    ? R.buildWpm(cur.playedMs, settings.wpm, { stepWpm: settings.buildStep, stepSec: settings.buildEvery })
+    : settings.wpm;
 }
 
 function fmt(ms) {
@@ -1108,6 +1112,11 @@ $('stats-btn').onclick = async () => {
 $('stats-close').onclick = () => { $('stats').hidden = true; };
 $('stats').onclick = (e) => { if (e.target === $('stats')) $('stats').hidden = true; };
 
+// ---------- "what's the point?" info panel ----------
+$('info-btn').onclick = () => { $('infomodal').hidden = false; };
+$('info-close').onclick = () => { $('infomodal').hidden = true; };
+$('infomodal').onclick = (e) => { if (e.target === $('infomodal')) $('infomodal').hidden = true; };
+
 // ---------- controls ----------
 $('play').onclick = togglePlay;
 $('restart').onclick = () => {
@@ -1173,7 +1182,7 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
     if (e.key === 'Escape') $(open).hidden = true;
@@ -1204,7 +1213,8 @@ function fillSettingsForm() {
   $('s-bg').value = settings.bg;
   $('s-wpm').value = settings.wpm;
   $('s-wpm-num').value = settings.wpm;
-  $('s-mode').value = settings.mode;
+  renderMode();
+  fillBuild();
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
   $('s-noai').checked = settings.aiDisabled;
@@ -1240,7 +1250,30 @@ bind('s-color', 'color');
 bind('s-bg', 'bg');
 $('s-wpm').oninput = (e) => setWpm(Number(e.target.value));
 $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
-bind('s-mode', 'mode');
+// Mode is a Standard/Build radio (circular indicators); Build reveals its two
+// sliders — wpm-per-interval and the interval (which live-updates the other's label).
+function renderMode() {
+  document.querySelectorAll('#s-mode .seg-opt').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.mode));
+  $('build-opts').hidden = settings.mode !== 'build';
+}
+function fillBuild() {
+  $('s-build-step').value = settings.buildStep;
+  $('s-build-every').value = settings.buildEvery;
+  $('bld-step').textContent = settings.buildStep;
+  document.querySelectorAll('.bld-every').forEach((e) => { e.textContent = settings.buildEvery; });
+}
+document.querySelectorAll('#s-mode .seg-opt').forEach((b) => {
+  b.onclick = () => { settings.mode = b.dataset.v; saveSettings(); renderMode(); if (cur) updateHud(); };
+});
+$('s-build-step').oninput = (e) => {
+  settings.buildStep = Number(e.target.value); saveSettings();
+  $('bld-step').textContent = settings.buildStep; if (cur) updateHud();
+};
+$('s-build-every').oninput = (e) => {
+  settings.buildEvery = Number(e.target.value); saveSettings();
+  document.querySelectorAll('.bld-every').forEach((el) => { el.textContent = settings.buildEvery; });
+  if (cur) updateHud();
+};
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
 bind('s-noai', 'aiDisabled');
