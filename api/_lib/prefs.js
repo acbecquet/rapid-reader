@@ -5,13 +5,15 @@
 
 export const SOURCES = ['claude_code', 'codex', 'copilot', 'docs', 'email', 'telegram'];
 
-// The five default columns and which source types fall into each.
+// The five default columns and which source types fall into each. Order is the
+// backlog's top-to-bottom order on phones (and left-to-right on desktop):
+// reading first (books, articles), then agents, general, with email last.
 export const DEFAULT_COLUMNS = [
-  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'books', name: 'Books', icon: 'book', sources: ['book'] },
-  { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
   { id: 'news', name: 'News', icon: 'news', sources: ['article', 'web'] },
+  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'other'] },
+  { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
 ];
 
 export function defaultPrefs() {

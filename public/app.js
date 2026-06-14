@@ -573,11 +573,11 @@ $('colcfg-close').onclick = async () => {
 $('colcfg').onclick = (e) => { if (e.target === $('colcfg')) $('colcfg-close').click(); };
 
 const DEFAULT_COLUMNS_CLIENT = [
-  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'books', name: 'Books', icon: 'book', sources: ['book'] },
-  { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
   { id: 'news', name: 'News', icon: 'news', sources: ['article', 'web'] },
+  { id: 'agents', name: 'Agents', icon: 'agents', sources: ['claude_code', 'codex', 'copilot', 'telegram'] },
   { id: 'general', name: 'General', icon: 'general', sources: ['manual', 'docs', 'other'] },
+  { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
 ];
 
 async function saveCols(cols) {
