@@ -1675,11 +1675,14 @@ function setKeyMsg(msg, err) {
   el.classList.toggle('err', !!err);
 }
 
-function openKeyModal() {
+function openKeyModal(fromSettings = false) {
   const hasKey = !!prefs?.hasGeminiKey;
   $('key-title').textContent = hasKey ? 'Replace your Gemini key' : 'One quick setup step';
   $('key-input').value = '';
   $('key-skip').textContent = hasKey ? 'Cancel' : 'Skip for now';
+  // Auto-nudge only: reassure first-run guests it's optional and re-addable.
+  // Hidden when opened from Settings — they're already in the right place.
+  $('key-later').hidden = fromSettings;
   setKeyMsg('');
   $('keymodal').hidden = false;
   $('key-input').focus();
@@ -1730,9 +1733,13 @@ $('key-paste').onclick = async () => {
 };
 $('key-save').onclick = saveKey;
 $('key-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveKey(); });
-$('key-skip').onclick = closeKeyModal;
+$('key-skip').onclick = () => {
+  const hadKey = !!prefs?.hasGeminiKey;
+  closeKeyModal();
+  if (!hadKey) toast('No problem — add your free Gemini key anytime in ⚙ Settings');
+};
 $('keymodal').onclick = (e) => { if (e.target === $('keymodal')) closeKeyModal(); };
-$('s-aikey-btn').onclick = () => { $('settings').hidden = true; openKeyModal(); };
+$('s-aikey-btn').onclick = () => { $('settings').hidden = true; openKeyModal(true); };
 
 // ---------- share target intake (PWA: select → share → Rapid Reader) ----------
 async function intakeShared() {
