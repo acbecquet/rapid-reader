@@ -632,20 +632,9 @@ a.btn { text-decoration: none; display: inline-block; }
   #top:not(.closed) .col { width: 100%; min-width: 0; flex: none; }
   #top:not(.closed) .col-body { flex: none; overflow: visible; }
 
-  /* transcript "halo": the RSVP word is left exactly as-is, pinned between its
-     two guide lines (the hard edges). The transcript fills the reader behind it
-     and scrolls so the current word sits masked in the centre — context reads
-     above the top line and below the bottom line. */
-  #reader.reading-script #transcript {
-    position: absolute; inset: 0; z-index: 1; flex: none;
-    padding: 46vh 18px; /* lets the first and last word reach the centre */
-  }
-  #reader.reading-script #stage {
-    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
-    flex: none; min-height: 0; padding: 0; z-index: 2; background: var(--reader-bg);
-  }
-  #reader.reading-script #progress { position: absolute; top: 0; left: 0; right: 0; z-index: 3; }
-  #reader.reading-script #hud {
-    position: absolute; bottom: 0; left: 0; right: 0; z-index: 3; background: var(--reader-bg);
-  }
+  /* phones: keep it simple — the RSVP word sits high (closer to the top) with
+     the transcript reading only below it, instead of floating dead-centre with
+     faint text above and below. */
+  #reader.reading-script #stage { flex: none; min-height: 0; padding: 18vh 0 0; }
+  #reader.reading-script #transcript { flex: 1; }
 }
