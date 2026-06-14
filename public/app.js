@@ -729,11 +729,7 @@ function markTranscript() {
   if (nowSpan) nowSpan.classList.add('now');
   // agent chats read like a messenger: newest pinned to the bottom — unless
   // you're actively RSVP-playing, then the transcript follows the word
-  if (isMobile() && nowSpan) {
-    // halo layout: pin the current word behind the centred RSVP band, so the
-    // transcript reads above and below the fixed reader
-    nowSpan.scrollIntoView({ block: 'center' });
-  } else if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
+  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
   } else if (nowSpan) {
