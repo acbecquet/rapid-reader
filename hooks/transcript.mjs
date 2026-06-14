@@ -104,13 +104,18 @@ export function compileTranscript(jsonl) {
   return { md, firstPrompt };
 }
 
-// Build the /api/items payload, or null for thin/background sessions.
-export function buildPayload({ jsonl, sessionId, group, sourceType }) {
+// Build the /api/items payload, or null for thin/background sessions. `title`
+// is an optional override (sync injects a native-model title); without it the
+// quick title is the session summary || first prompt (instant, no LLM).
+export function buildPayload({ jsonl, sessionId, group, sourceType, title }) {
   if (isBackground(jsonl)) return null;
   const { md, firstPrompt } = compileTranscript(jsonl);
   if (md.split(/\s+/).length < 8) return null;
-  const base = (sessionSummary(jsonl) || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
-  const words = base.split(' ');
-  const title = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
-  return { sessionId, text: md, title, group: group || 'sessions', sourceType: sourceType || 'claude_code' };
+  let quick = title;
+  if (!quick) {
+    const base = (sessionSummary(jsonl) || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
+    const words = base.split(' ');
+    quick = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
+  }
+  return { sessionId, text: md, title: quick, group: group || 'sessions', sourceType: sourceType || 'claude_code' };
 }

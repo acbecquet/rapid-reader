@@ -15,7 +15,6 @@ const DEFAULTS = {
   mode: 'standard', // 'standard' | 'build'
   autoplay: false, // open an item already playing (vs. paused) when you click it
   keepOpen: true, // keep the backlog visible while reading
-  chapterTitles: true, // AI-fill a book chapter's title when the EPUB gives none
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
   token: '',
@@ -141,12 +140,11 @@ async function refresh() {
     renderColumns();
     updateMcp();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
-    // an upserted item (e.g. a live Claude session) refreshes the open reader
+    // an upserted item (e.g. a live agent session) updates the open reader in
+    // place — never moving your spot or pausing (#2: no reading interruptions)
     const open = cur && !cur.item.live && fresh.find((it) => it.id === cur.item.id);
-    if (open && !cur.playing && itemSig(open) !== cur.sig) {
-      open.progress = cur.i;
-      openItem(open, { start: false });
-      toast('Updated with new content');
+    if (open && itemSig(open) !== cur.sig) {
+      liveUpdateOpen(open);
     } else if (newest && settings.autoplay && (!cur || !cur.playing)) {
       openItem(newest);
       toast('New capture — playing');
@@ -186,6 +184,15 @@ function timeLabel(ts) {
   return groupName(ts) === 'Today'
     ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+}
+
+// Compact "time since the last message" for agent rows (now / 4m / 2h / 3d).
+function relTime(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return Math.round(s / 60) + 'm';
+  if (s < 86400) return Math.round(s / 3600) + 'h';
+  return Math.round(s / 86400) + 'd';
 }
 
 // ---------- header: ⚡ ＋ 📖 actions + source toggles ----------
@@ -243,6 +250,12 @@ function agentMatch(it) {
   if (agentView === 'agents') return !['claude_code', 'codex', 'telegram'].includes(it.sourceType);
   return it.sourceType === agentView;
 }
+const agentLabel = () => (AGENT_VIEWS.find((v) => v.id === agentView) || {}).label || 'agents';
+// the ⌁ → upright bolt, and the label follows the picker so you connect whoever
+// is selected ("Connect to Claude Code" / "Connect to Codex" / …)
+function updateConnectLabel() {
+  $('mcp-init').innerHTML = icon('lightning') + ' Connect to ' + agentLabel();
+}
 // background noise that should never surface in the agents column
 const NOISE_GROUP = /^(observer|memory|background)|^sessions$/i;
 // stale noise to delete outright — strict, exact names only (safe to remove)
@@ -278,6 +291,7 @@ function agentPicker() {
   sel.onchange = () => {
     agentView = sel.value;
     localStorage.setItem('rr:agentView', agentView);
+    updateConnectLabel();
     lastRender = '';
     renderColumns();
   };
@@ -287,6 +301,9 @@ function agentPicker() {
 
 // collapsed project groups, persisted: keyed `${columnId}/${group}`
 const collapsedGroups = new Set(JSON.parse(localStorage.getItem('rr:collapsed') || '[]'));
+// where you left off in each non-agent panel (columnId → itemId), persisted so
+// it's easy to resume your spot after days away
+const resumeMap = JSON.parse(localStorage.getItem('rr:resume') || '{}');
 function toggleGroup(gkey) {
   collapsedGroups.has(gkey) ? collapsedGroups.delete(gkey) : collapsedGroups.add(gkey);
   localStorage.setItem('rr:collapsed', JSON.stringify([...collapsedGroups]));
@@ -295,7 +312,7 @@ function toggleGroup(gkey) {
 
 function renderColumns() {
   const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group, i.createdAt, i.bookmarkAt]))
-    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',') + agentView;
+    + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',') + agentView + Math.floor(Date.now() / 60000);
   if (key === lastRender) return;
   lastRender = key;
 
@@ -382,8 +399,22 @@ function renderColBody(body, col, list) {
     const collapsed = collapsedGroups.has(gkey);
     const gh = document.createElement('div');
     gh.className = 'group' + (collapsed ? ' collapsed' : '');
-    const bmHint = bm?.bookmarkAt ? `<span class="g-bm">📖 ${(bm.chapterIndex || 0) + 1}/${gItems.length}</span>` : '';
-    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>${bmHint}<span class="g-c">${gItems.length}</span>`;
+    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>`;
+    if (bm?.bookmarkAt) {
+      // one-click resume — open the bookmarked chapter at its saved spot, even
+      // when the book is collapsed and you've been away for days
+      const chNum = (bm.title.match(/chapter\s+(\d+)/i) || [])[1];
+      const badge = document.createElement('button');
+      badge.className = 'g-bm';
+      badge.textContent = '📖 ' + (chNum ? 'Ch ' + chNum : 'resume');
+      badge.title = 'Resume — ' + bm.title;
+      badge.onclick = (e) => { e.stopPropagation(); openItem(bm); };
+      gh.append(badge);
+    }
+    const gc = document.createElement('span');
+    gc.className = 'g-c';
+    gc.textContent = gItems.length;
+    gh.append(gc);
     gh.onclick = () => toggleGroup(gkey);
     body.append(gh);
     if (!collapsed) for (const it of gItems) body.append(itemRow(it, col.id, gItems, it === bm && !!bm.bookmarkAt));
@@ -398,6 +429,7 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (it.readAt ? '' : ' unread')
     + (cur?.item.id === it.id ? ' active' : '')
     + (isBookmark ? ' bookmark' : '')
+    + (resumeMap[colId] === it.id && cur?.item.id !== it.id ? ' resume' : '')
     + (selected.has(it.id) ? ' sel' : '');
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
@@ -405,6 +437,12 @@ function itemRow(it, colId, colItems, isBookmark) {
   t.className = 't';
   t.textContent = (isBookmark ? '📖 ' : '') + it.title;
   row.append(t);
+  if (AGENT_SOURCES.has(it.sourceType)) {
+    const ago = document.createElement('span');
+    ago.className = 'ago';
+    ago.textContent = relTime(it.createdAt);
+    row.append(ago);
+  }
   row.onclick = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
@@ -663,7 +701,11 @@ $('link-cancel').onclick = () => { pendingLink = null; $('linkmodal').hidden = t
 $('linkmodal').onclick = (e) => { if (e.target === $('linkmodal')) $('link-cancel').click(); };
 
 function applyTranscript() {
-  $('transcript').hidden = !settings.transcript || !cur;
+  const show = settings.transcript && !!cur;
+  $('transcript').hidden = !show;
+  // when the transcript is showing it fills the reader; the word sits in a thin
+  // row flush under the backlog (otherwise the word stays centered, classic)
+  $('reader').classList.toggle('reading-script', show);
   $('script-btn').classList.toggle('on', settings.transcript);
   if (cur) markTranscript();
 }
@@ -672,8 +714,13 @@ function markTranscript() {
   if (!settings.transcript || $('transcript').hidden) return;
   nowSpan?.classList.remove('now');
   nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
-  if (nowSpan) {
-    nowSpan.classList.add('now');
+  if (nowSpan) nowSpan.classList.add('now');
+  // agent chats read like a messenger: newest pinned to the bottom — unless
+  // you're actively RSVP-playing, then the transcript follows the word
+  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
+    const box = $('transcript');
+    box.scrollTop = box.scrollHeight;
+  } else if (nowSpan) {
     nowSpan.scrollIntoView({ block: 'nearest' });
   }
 }
@@ -716,7 +763,6 @@ function play() {
   }
   cur.playing = true;
   $('play').textContent = '⏸';
-  $('paused-hint').hidden = true;
   tick();
 }
 
@@ -725,7 +771,6 @@ function pause() {
   if (cur.playing && sess) sess.pauses += 1;
   cur.playing = false;
   $('play').textContent = '▶';
-  $('paused-hint').hidden = false;
   saveProgress();
 }
 
@@ -752,7 +797,6 @@ function finish() {
   $('bar').style.width = '100%';
   $('time-left').textContent = '0:00';
   $('play').textContent = '▶';
-  $('paused-hint').hidden = true;
   if (sess) sess.completed = true;
   flushSession();
   markRead(cur.item);
@@ -854,8 +898,9 @@ async function openItem(item, { start = true } = {}) {
       return;
     }
   }
-  // lazy AI self-heal: only the item you actually opened, only if it looks wrong
-  if (!item.live && !settings.aiDisabled && looksBadTitle(item.title)) healTitle(item);
+  // lazy AI self-heal (non-agent items only — agent sessions are titled by the
+  // native model in the sync hook, not Gemini/MiniMax): only what you opened
+  if (!item.live && !settings.aiDisabled && !AGENT_SOURCES.has(item.sourceType) && looksBadTitle(item.title)) healTitle(item);
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
@@ -885,8 +930,14 @@ async function openItem(item, { start = true } = {}) {
     item.bookmarkAt = Date.now();
     api('PATCH', 'items', { body: { id: item.id, bookmarkAt: item.bookmarkAt } }).catch(() => {});
   }
+  // remember this as the resume point for its panel (agents stay live, excluded)
+  if (!item.live && !AGENT_SOURCES.has(item.sourceType)) {
+    resumeMap[columnFor(item)] = item.id;
+    localStorage.setItem('rr:resume', JSON.stringify(resumeMap));
+  }
   $('empty').hidden = true;
   $('reader').hidden = false;
+  $('now-reading').hidden = false;
   $('item-title').textContent = item.title;
   $('keep-btn').hidden = !item.live;
   buildSectionNav();
@@ -898,11 +949,44 @@ async function openItem(item, { start = true } = {}) {
   } else {
     showToken();
     $('play').textContent = '▶';
-    $('paused-hint').hidden = false;
   }
 }
 
 $('close-reader').onclick = () => closeReader();
+
+// Update the open item's content in place when it grows (e.g. a live agent
+// session) WITHOUT moving your RSVP spot, pausing, or yanking the reader —
+// #2: no unexpected interruptions while reading.
+async function liveUpdateOpen(fresh) {
+  let text;
+  try { ({ text } = await api('GET', 'items', { query: { id: fresh.id } })); }
+  catch { return; }
+  if (!cur || cur.item.id !== fresh.id) return; // closed/switched while fetching
+  bodyCache.set(fresh.id, text);
+  let sections, tokens;
+  try {
+    sections = P.parseStructure(text);
+    tokens = P.readingTokens(sections);
+  } catch { return; }
+  cur.item = fresh;
+  cur.text = text;
+  cur.sig = itemSig(fresh);
+  cur.sections = sections;
+  cur.tokens = tokens;
+  cur.anchors = [];
+  sections.forEach((s, idx) => {
+    if (s.type === 'heading') {
+      const at = tokens.findIndex((t) => t.sec === idx);
+      if (at !== -1) cur.anchors.push({ sec: idx, title: s.title, at });
+    }
+  });
+  cur.i = Math.min(cur.i, tokens.length - 1);
+  $('item-title').textContent = fresh.title;
+  buildSectionNav();
+  buildTranscript();
+  if (!cur.playing) showToken();
+  updateHud();
+}
 
 function closeReader() {
   clearTimeout(timer);
@@ -911,6 +995,7 @@ function closeReader() {
   cur = null;
   applyTranscript();
   $('reader').hidden = true;
+  $('now-reading').hidden = true;
   $('empty').hidden = false;
   renderColumns();
 }
@@ -1122,7 +1207,6 @@ function fillSettingsForm() {
   $('s-mode').value = settings.mode;
   $('s-autoplay').checked = settings.autoplay;
   $('s-keepopen').checked = settings.keepOpen;
-  $('s-chaptertitles').checked = settings.chapterTitles;
   $('s-noai').checked = settings.aiDisabled;
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
@@ -1159,7 +1243,6 @@ $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
 bind('s-mode', 'mode');
 bind('s-autoplay', 'autoplay');
 bind('s-keepopen', 'keepOpen');
-bind('s-chaptertitles', 'chapterTitles');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
 
@@ -1214,55 +1297,44 @@ $('add-epub').onchange = async (e) => {
   }
 };
 
-// ---------- books: number + title every chapter, until none are raw ----------
-// A book can hold chapters the EPUB left with a junk/missing title ("##", blank)
-// or no number. On each poll we reconcile every book in reading order: front
-// matter keeps its name; each remaining chapter becomes "Chapter N · <desc>".
-// Numbers apply instantly (cheap); missing descriptions are filled by the AI a
-// few at a time, so even a large book converges over successive polls.
-const FRONT_MATTER_TITLE = /^\s*(introduction|prologue|epilogue|foreword|preface|afterword|appendix|acknowledg|table of contents|contents|copyright|colophon|dedication|epigraph|about the|index|glossary|bibliography|title page|cover|part\b|book\b|section\b|volume\b)/i;
-const chapterDesc = (title) => String(title || '')
-  .replace(/^\s*#{1,6}\s*/, '')
-  .replace(/^chapter\s+[0-9ivxlcdm]+\s*[·:.\-—]?\s*/i, '')
-  .replace(/\s+/g, ' ').trim();
-const isJunkTitle = (title) => { const t = String(title || '').trim(); return !t || /^[#*\-–—.·•\s]+$/.test(t); };
-
-const bookFixDone = new Set(); // id|target already PATCHed this session (no loops)
+// ---------- books: number every chapter once, then leave it alone ----------
+// Numbers + the book's own explicit chapter names only — never AI-written
+// descriptions (those spoil the story and burn tokens). Each book is reconciled
+// ONCE per numbering version with the shared epub.js classifier; bump BOOK_VER
+// to backfill every loaded book exactly once. Only the title relabels, so your
+// place (bookmark + progress) is never touched — "Chapter 17" just becomes
+// "Chapter 14".
+const BOOK_VER = 1;
+const bookVer = JSON.parse(localStorage.getItem('rr:bookVer') || '{}');
 function reconcileBooks() {
   const byBook = new Map();
   for (const it of items) if (it.bookId && !it.archivedAt) {
     (byBook.get(it.bookId) || byBook.set(it.bookId, []).get(it.bookId)).push(it);
   }
-  const numFix = []; // {it,title} — instant, no AI
-  const aiFix = [];  // {it,num}   — needs an AI description
-  for (const chs of byBook.values()) {
+  const fixes = [];
+  let saved = false;
+  for (const [bookId, chs] of byBook) {
+    if (bookVer[bookId] === BOOK_VER) continue; // already numbered at this version — never again
     chs.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
-    let last = 0;
-    for (const it of chs) {
-      const title = String(it.title || '');
-      if (!isJunkTitle(title) && FRONT_MATTER_TITLE.test(title)) continue; // front matter: keep its name
-      const m = title.match(/^chapter\s+(\d+)/i);
-      if (m && chapterDesc(title)) { last = Number(m[1]); continue; }      // already "Chapter N · desc"
-      const num = m ? Number(m[1]) : last + 1;
-      last = num;
-      const desc = chapterDesc(title);
-      if (desc) numFix.push({ it, title: `Chapter ${num} · ${desc}`.slice(0, 120) });
-      else if (settings.chapterTitles && !settings.aiDisabled) aiFix.push({ it, num });
-      else numFix.push({ it, title: `Chapter ${num}` });
-    }
+    const bookTitle = (chs[0]?.group || '').split(' — ')[0];
+    const marks = E.enumerateChapters(chs.map((it) => it.title), bookTitle);
+    const bookFixes = [];
+    chs.forEach((it, i) => {
+      const { num, category } = marks[i];
+      const name = E.bareTitle(it.title); // the book's explicit chapter name, if any
+      const want = category !== 'chapter' ? (name || it.title)
+        : name ? `Chapter ${num} · ${name}`.slice(0, 120)
+        : `Chapter ${num}`;
+      if (it.title !== want) bookFixes.push({ it, title: want });
+    });
+    if (bookFixes.length) fixes.push(...bookFixes);
+    else { bookVer[bookId] = BOOK_VER; saved = true; } // converged → mark done, skip forever
   }
-  const cheap = numFix.filter((f) => f.it.title !== f.title && !bookFixDone.has(f.it.id + '|' + f.title));
-  const ai = aiFix.filter((f) => !bookFixDone.has(f.it.id + '|ai'));
-  if (!cheap.length && !ai.length) return;
-  for (const f of cheap.slice(0, 40)) {
-    bookFixDone.add(f.it.id + '|' + f.title);
-    f.it.title = f.title; // optimistic — the number shows on the next render
+  if (saved) localStorage.setItem('rr:bookVer', JSON.stringify(bookVer));
+  if (!fixes.length) return;
+  for (const f of fixes.slice(0, 60)) {
+    f.it.title = f.title; // optimistic — renumbers in place, your spot is unchanged
     api('PATCH', 'items', { body: { id: f.it.id, title: f.title } }).catch(() => {});
-  }
-  for (const f of ai.slice(0, 6)) {
-    bookFixDone.add(f.it.id + '|ai');
-    f.it.title = `Chapter ${f.num}`; // show the number now; AI fills the description
-    api('PATCH', 'items', { body: { id: f.it.id, retitle: true, book: true, num: f.num } }).catch(() => {});
   }
   lastRender = ''; renderColumns();
 }
@@ -1493,6 +1565,7 @@ async function intakeShared() {
 }
 applySettings();
 fillSettingsForm();
+updateConnectLabel();
 initAuth();
 // /?item=<id> (e.g. MCP playbackUrl) deep-links straight into an item.
 const wantedItem = new URLSearchParams(location.search).get('item');

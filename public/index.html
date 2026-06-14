@@ -20,6 +20,12 @@
       </span>
       <span class="brand">Rapid Reader</span>
       <span id="status">connecting…</span>
+      <span id="now-reading" hidden>
+        <span id="item-title"></span>
+        <select id="sections" hidden title="Jump to section ([ / ])"></select>
+        <button id="raw-btn" class="chip" title="View raw source">source</button>
+        <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
+      </span>
       <div id="tools">
         <button id="capture-btn" class="icon-btn" title="Live highlight On/Off — clipboard + extension"></button>
         <button id="add-btn" class="icon-btn" title="Paste text or a URL"></button>
@@ -49,20 +55,13 @@
     </div>
     <div id="reader" hidden>
       <button id="close-reader" class="icon-btn" title="Close — back to the empty reader">✕</button>
-      <div id="item-title"></div>
-      <div id="secnav">
-        <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
-        <select id="sections" hidden title="Jump to section ([ / ])"></select>
-        <button id="raw-btn" class="chip" title="View raw source">source</button>
-      </div>
       <div id="stage" title="Tap to play/pause">
         <div class="guide top"></div>
         <div id="word"><span id="pre"></span><span id="pivot"></span><span id="post"></span></div>
         <div class="guide bottom"></div>
-        <div id="paused-hint" hidden>paused — Space or tap</div>
       </div>
-      <div id="transcript" hidden></div>
       <div id="progress"><div id="bar"></div></div>
+      <div id="transcript" hidden></div>
       <div id="hud">
         <button id="restart" class="icon-btn" title="Restart">⟲</button>
         <button id="back" class="icon-btn" title="Previous sentence (←)">⟨</button>
@@ -104,7 +103,6 @@
       </label>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
-      <label class="check"><input id="s-chaptertitles" type="checkbox"> Include chapter titles (AI-generated when missing)</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
       <div id="s-account" hidden>
         <div class="acct-line">Signed in as <span id="s-email"></span></div>

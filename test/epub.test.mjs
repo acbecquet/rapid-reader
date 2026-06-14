@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import zlib from 'node:zlib';
-import { parseEpub, compileBook, chapterText } from '../public/epub.js';
+import { parseEpub, compileBook, chapterText, classifyEntry, enumerateChapters, bareTitle } from '../public/epub.js';
 import itemsHandler from '../api/items.js';
 
 // ---------- minimal zip writer (CRCs unset — the parser ignores them) ----------
@@ -149,15 +149,34 @@ function makeNumberedEpub() {
   ]);
 }
 
-test('chapter numbering: skips front matter, reads image alt, honours stated numbers, enumerates', async () => {
+test('chapter numbering: skips front matter + dividers, enumerates from the first chapter', async () => {
   const book = await parseEpub(makeNumberedEpub());
   assert.deepEqual(book.chapters.map((c) => c.title), [
     'Introduction',              // named front matter — no number
-    'Part One',                  // structural division — no number
-    'Chapter 1',                 // number read from the chapter-cover image alt
-    'Chapter 3 · The Reckoning', // stated word-number jumps the running count
-    'Chapter 4 · The Aftermath', // enumerated; title pulled from the nav document
+    'Part One',                  // structural divider — no number
+    'Chapter 1',                 // first real chapter (title was a cover image)
+    'Chapter 2 · The Reckoning', // enumerated ascending; heading's own number ignored
+    'Chapter 3 · The Aftermath', // enumerated; title pulled from the nav document
   ]);
+});
+
+test('classifyEntry + enumerateChapters apply the front-matter rules', () => {
+  const book = 'The Ballad of Songbirds and Snakes';
+  assert.equal(classifyEntry('Chapter 1 · Synopsis', book), 'front');
+  assert.equal(classifyEntry('Chapter 2 · The Ballad of Songbirds and Snakes', book), 'front'); // title page
+  assert.equal(classifyEntry('Credits', book), 'front');
+  assert.equal(classifyEntry('PART I "THE MENTOR"', book), 'divider');
+  assert.equal(classifyEntry('Poverty and pride in the Capitol', book), 'chapter');
+  assert.equal(classifyEntry('About the Author', book), 'back');
+  assert.equal(classifyEntry('##', book), 'chapter'); // junk → a chapter (gets a number + AI title)
+  assert.equal(bareTitle('Chapter 4 · Poverty and pride'), 'Poverty and pride');
+
+  // a full book: front matter + title page + divider, then chapters from 1,
+  // and back matter stops the count
+  const titles = ['Synopsis', 'The Ballad of Songbirds and Snakes', 'Credits', 'Dedication',
+    'PART I "THE MENTOR"', 'Poverty and pride', 'District 12 humiliation', 'About the Author', 'Bonus scene'];
+  assert.deepEqual(enumerateChapters(titles, book).map((m) => m.num),
+    [null, null, null, null, null, 1, 2, null, null]);
 });
 
 // ---------- books API ----------
