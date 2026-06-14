@@ -69,6 +69,18 @@ optional decoration; apply them to every change.
    Turn vague tasks into measurable outcomes; for anything non-trivial, run
    `npm test` and exercise the dev server before calling it done.
 
+## Reasoning discipline
+
+Hard-won, from a real mistake — do not repeat it:
+
+1. **Follow your own analysis to its conclusion.** If you've already surfaced
+   the facts that settle a question, your recommendation must *be* that
+   conclusion — never pair advice with reasoning that undercuts it in the same
+   breath. (The mistake: recommending an email allowlist while explaining, in
+   the same message, exactly why open sign-in is already perfectly safe here.)
+2. **Reason from this app's actual design, not a generic prior.** Don't import a
+   threat model the system doesn't have; "lock it down" is not a default.
+
 ## Project-specific rules
 
 - The frontend stays buildless. If a change seems to require a bundler,
@@ -90,6 +102,14 @@ optional decoration; apply them to every change.
   daily aggregates, `rr:live[:uid]` ephemeral slot. Identity is a stateless
   HMAC session token (Google sign-in via `api/login.js`, or the owner/dev
   token → uid `owner`). No passwords, no server-side sessions, no billing.
+- **Open by design — never gate it, and never store anything sensitive.** Google
+  sign-in exists *only* to separate backlogs per user and to route each user
+  onto their own free Gemini key — it is NOT an access control. `ALLOWED_EMAILS`
+  stays unset: any Google account (a brand-new throwaway included) is a welcome
+  user, and there is intentionally no `@gmail.com`/domain filter. Per-user
+  isolation + bring-your-own-key make open the correct, safe default. Never
+  propose allowlists, domain filters, or other gating as "security" — this
+  workspace holds nothing sensitive, on purpose.
 - **Responsiveness first: no AI on the capture/open path.** Titles are instant
   first-words; URLs are stripped to text (no LLM reorg); code is shown raw in
   the transcript. `title.js` (MiniMax/Gemini) stays for optional future use,
