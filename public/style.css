@@ -489,6 +489,10 @@ a.btn { text-decoration: none; display: inline-block; }
 .modal-card.wide { max-width: 480px; }
 /* settings panel: 25% wider, a touch larger type, tighter rows */
 #settings .modal-card { max-width: 400px; }
+/* Build mode reveals two extra sliders — anchor the panel near the top so it
+   grows downward from the Mode buttons, instead of recentering and shoving the
+   controls (and the text behind it) upward when you toggle Build. */
+#settings { align-items: flex-start; padding-top: 8vh; }
 #settings .modal-card h2 { font-size: 15px; }
 #settings .modal-card label { font-size: 13px; margin: 7px 0; }
 #settings .modal-card .hint, #settings .acct-line { font-size: 12.5px; }
