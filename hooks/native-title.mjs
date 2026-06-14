@@ -45,31 +45,31 @@ export function cleanTitle(raw) {
 // claude -p runs headless/one-shot on the user's logged-in subscription (no API
 // key) and spawns a fresh independent session — safe from background tooling.
 // codex exec is the Codex analog; under-documented, so we try and degrade.
-function cliFor(sourceType) {
-  if (sourceType === 'codex') return { cmd: 'codex', args: ['exec'] };
-  return { cmd: 'claude', args: ['-p', '--model', 'haiku', '--output-format', 'text'] };
+// Pass the whole prompt as the positional arg — the documented `claude -p
+// "PROMPT"` form. execFile uses no shell (nothing to escape) and the ~6k tail
+// is well under the OS arg limit, so this is more reliable than piping stdin.
+function cliFor(sourceType, prompt) {
+  if (sourceType === 'codex') return { cmd: 'codex', args: ['exec', prompt] };
+  return { cmd: 'claude', args: ['-p', prompt, '--model', 'haiku', '--output-format', 'text'] };
 }
 
-function run(cmd, args, input) {
+function run(cmd, args) {
   return new Promise((resolve) => {
-    let child;
     try {
-      child = execFile(cmd, args, { timeout: TIMEOUT_MS, maxBuffer: 1 << 20 }, (err, stdout) => {
+      execFile(cmd, args, { timeout: TIMEOUT_MS, maxBuffer: 1 << 20 }, (err, stdout) => {
         resolve(err ? null : String(stdout || ''));
       });
     } catch {
-      return resolve(null); // cmd not found / spawn error
+      resolve(null); // cmd not found / spawn error
     }
-    try { child.stdin.end(input); } catch {}
   });
 }
 
 // IMPURE: returns the cleaned native title, or null on any failure/timeout.
 export async function nativeTitle({ sourceType, transcript }) {
   if (!transcript) return null;
-  const { cmd, args } = cliFor(sourceType);
-  const prompt = buildTitlePrompt(transcript);
-  const out = await run(cmd, args, prompt);
+  const { cmd, args } = cliFor(sourceType, buildTitlePrompt(transcript));
+  const out = await run(cmd, args);
   if (out == null) return null;
   return cleanTitle(out) || null;
 }

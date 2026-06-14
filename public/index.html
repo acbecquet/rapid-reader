@@ -20,12 +20,14 @@
       </span>
       <span class="brand">Rapid Reader</span>
       <span id="status">connecting…</span>
-      <span id="now-reading" hidden>
+      <span class="bar-spacer"></span>
+      <span id="now-reading" hidden title="What you're reading, and its source">
         <span id="item-title"></span>
         <select id="sections" hidden title="Jump to section ([ / ])"></select>
         <button id="raw-btn" class="chip" title="View raw source">source</button>
         <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
       </span>
+      <span class="bar-spacer"></span>
       <div id="tools">
         <button id="capture-btn" class="icon-btn" title="Live highlight On/Off — clipboard + extension"></button>
         <button id="add-btn" class="icon-btn" title="Paste text or a URL"></button>
@@ -54,8 +56,8 @@
       </div>
     </div>
     <div id="reader" hidden>
-      <button id="close-reader" class="icon-btn" title="Close — back to the empty reader">✕</button>
       <div id="stage" title="Tap to play/pause">
+        <button id="close-reader" class="icon-btn" title="Close — back to the empty reader">✕</button>
         <div class="guide top"></div>
         <div id="word"><span id="pre"></span><span id="pivot"></span><span id="post"></span></div>
         <div class="guide bottom"></div>

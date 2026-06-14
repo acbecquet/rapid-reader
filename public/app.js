@@ -952,7 +952,7 @@ async function openItem(item, { start = true } = {}) {
   }
 }
 
-$('close-reader').onclick = () => closeReader();
+$('close-reader').onclick = (e) => { e.stopPropagation(); closeReader(); };
 
 // Update the open item's content in place when it grows (e.g. a live agent
 // session) WITHOUT moving your RSVP spot, pausing, or yanking the reader —
@@ -1576,10 +1576,19 @@ intakeShared().then(refresh).then(() => {
   if (it) openItem(it);
 });
 setInterval(() => { if (document.visibilityState === 'visible') refresh(); }, 10000);
+// fast lane: the live-highlight slot is tiny, so poll it on its own ~1s — a
+// highlight appears almost instantly instead of waiting for the 10s backlog
+// poll. Skipped when capture is off or the tab is hidden, so it stays cheap.
+async function pollLive() {
+  if (document.visibilityState !== 'visible' || !captureState || !settings.token) return;
+  try { const { live } = await api('GET', 'live'); maybeOpenLive(live); } catch {}
+}
+setInterval(pollLive, 1000);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') refresh();
+  if (document.visibilityState === 'visible') { refresh(); pollLive(); }
   else { if (cur) saveProgress(); flushSession(); }
 });
+addEventListener('focus', pollLive);
 addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');

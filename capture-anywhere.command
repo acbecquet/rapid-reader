@@ -20,5 +20,5 @@ while True:
             print('sent', t[:60].replace('\n', ' '))
         except Exception as e:
             print('send failed:', e)
-    time.sleep(0.7)
+    time.sleep(0.3)
 EOF

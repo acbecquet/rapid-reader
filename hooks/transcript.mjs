@@ -10,7 +10,7 @@ const TEXT_CAP = 60000;
 
 // Non-conversational user content that's in the transcript but not part of the
 // chat as shown natively (Codex env block, AGENTS.md, system reminders, …).
-const INJECTED = /^\s*(<environment_context>|<INSTRUCTIONS>|#\s*AGENTS\.md|<system-reminder>|<command-name>|<local-command|caveat: the messages below)/i;
+const INJECTED = /^\s*(<environment_context>|<INSTRUCTIONS>|#\s*AGENTS\.md|<system-reminder>|<command-|<local-command|caveat: the messages below)/i;
 
 // Automated background agents the user doesn't want surfaced.
 const OBSERVER = /\bmemory agent\b|continuing to observe\b/i;
