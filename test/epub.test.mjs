@@ -87,16 +87,16 @@ test('parseEpub: metadata, spine order, skips cover and non-linear nav', async (
   assert.equal(book.title, 'Test Voyage');
   assert.equal(book.author, 'A. Writer');
   assert.equal(book.chapters.length, 2);
-  assert.equal(book.chapters[0].title, 'Chapter 1 · Setting Sail'); // numbered + heading
+  assert.equal(book.chapters[0].title, 'Chapter 1'); // number only — no spoilers
   assert.ok(book.chapters[0].text.includes('harbor at dawn & sailed'));
-  assert.equal(book.chapters[1].title, 'Chapter 2 · The Storm'); // title from <title>
+  assert.equal(book.chapters[1].title, 'Chapter 2');
 });
 
 test('compileBook produces markdown sections per chapter', async () => {
   const md = compileBook(await parseEpub(makeEpub()));
-  assert.ok(md.includes('# Chapter 1 · Setting Sail'));
-  assert.ok(md.includes('# Chapter 2 · The Storm'));
-  assert.ok(md.indexOf('Setting Sail') < md.indexOf('The Storm'));
+  assert.ok(md.includes('# Chapter 1'));
+  assert.ok(md.includes('# Chapter 2'));
+  assert.ok(md.indexOf('# Chapter 1') < md.indexOf('# Chapter 2'));
 });
 
 test('chapterText strips tags, keeps headings and lists', () => {
@@ -152,11 +152,11 @@ function makeNumberedEpub() {
 test('chapter numbering: skips front matter + dividers, enumerates from the first chapter', async () => {
   const book = await parseEpub(makeNumberedEpub());
   assert.deepEqual(book.chapters.map((c) => c.title), [
-    'Introduction',              // named front matter — no number
-    'Part One',                  // structural divider — no number
-    'Chapter 1',                 // first real chapter (title was a cover image)
-    'Chapter 2 · The Reckoning', // enumerated ascending; heading's own number ignored
-    'Chapter 3 · The Aftermath', // enumerated; title pulled from the nav document
+    'Introduction', // named front matter — no number
+    'Part One',     // structural divider — no number
+    'Chapter 1',    // first real chapter, enumerated ascending
+    'Chapter 2',    // (the heading's own name is dropped — no spoilers)
+    'Chapter 3',
   ]);
 });
 
@@ -206,8 +206,8 @@ test('a book is a normal item (sourceType book) with its text in the body store'
 
   // the full text loads by id and round-trips the chapters
   r = await call(itemsHandler, 'GET', { query: { id: item.id } });
-  assert.ok(r.body.text.includes('# Chapter 1 · Setting Sail'));
-  assert.ok(r.body.text.includes('# Chapter 2 · The Storm'));
+  assert.ok(r.body.text.includes('# Chapter 1'));
+  assert.ok(r.body.text.includes('# Chapter 2'));
 
   r = await call(itemsHandler, 'DELETE', { body: { id: item.id } });
   assert.equal(r.code, 200);
