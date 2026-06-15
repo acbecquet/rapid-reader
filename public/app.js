@@ -393,6 +393,7 @@ function renderColumns() {
     h.className = 'col-h';
     h.innerHTML = `<span class="col-i">${icon(col.icon)}</span>`;
     h.append(agentCol ? agentPicker() : colNameSpan(col.name), colCountSpan(list.length));
+    if (list.some((it) => it.order != null)) h.append(colResetBtn(list));
     c.append(h);
     const body = document.createElement('div');
     body.className = 'col-body';
@@ -412,9 +413,46 @@ function renderColumns() {
 // under collapsible sub-headers — like the Claude Code sidebar. Ungrouped
 // items render flat at the top.
 const byNewest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+let dragId = null;
+// Manual order pins a column: ordered items sort by `order`; new (un-ordered)
+// items float to the top by recency, so arrivals don't disturb your arrangement.
+const bySaved = (a, b) => {
+  if (a.order == null && b.order == null) return byNewest(a, b);
+  if (a.order == null) return -1;
+  if (b.order == null) return 1;
+  return a.order - b.order;
+};
+
+// Drop `dragId` next to `targetId` within one list, renumber `order`, persist.
+function reorderWithin(list, dragId, targetId) {
+  const from = list.findIndex((x) => x.id === dragId);
+  const to = list.findIndex((x) => x.id === targetId);
+  if (from < 0 || to < 0) return;
+  const arr = [...list];
+  const [moved] = arr.splice(from, 1);
+  arr.splice(to, 0, moved);
+  arr.forEach((it, i) => {
+    if (it.order !== i) { it.order = i; api('PATCH', 'items', { body: { id: it.id, order: i } }).catch(() => {}); }
+  });
+  lastRender = ''; renderColumns();
+}
+
+// Clear manual order on a column → back to sort-by-recent.
+function colResetBtn(list) {
+  const b = document.createElement('button');
+  b.className = 'col-reset';
+  b.textContent = '↻';
+  b.title = 'Sort by recent (clear manual order)';
+  b.onclick = (e) => {
+    e.stopPropagation();
+    for (const it of list) if (it.order != null) { delete it.order; api('PATCH', 'items', { body: { id: it.id, order: null } }).catch(() => {}); }
+    lastRender = ''; renderColumns();
+  };
+  return b;
+}
 
 function renderColBody(body, col, list) {
-  const ungrouped = list.filter((it) => !it.group).sort(byNewest);
+  const ungrouped = list.filter((it) => !it.group).sort(bySaved);
   for (const it of ungrouped) body.append(itemRow(it, col.id, ungrouped));
 
   // groups ordered by their most recent item (newest project on top)
@@ -431,7 +469,7 @@ function renderColBody(body, col, list) {
     // a book group: chapters in reading order, with a bookmark on the current one
     const isBook = gItems.some((it) => it.bookId);
     if (isBook) gItems.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
-    else gItems.sort(byNewest); // agents: most recent session on top
+    else gItems.sort(bySaved); // agents/other: manual order if set, else most recent on top
     const bm = isBook
       ? gItems.reduce((a, b) => ((b.bookmarkAt || 0) > (a?.bookmarkAt || 0) ? b : a), null)
       : null;
@@ -476,6 +514,14 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (isBookmark ? ' bookmark' : '')
     + (resumeMap[colId] === it.id && cur?.item.id !== it.id ? ' resume' : '')
     + (selected.has(it.id) ? ' sel' : '');
+  row.draggable = !it.bookId; // chapters stay in reading order
+  if (row.draggable) {
+    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); };
+    row.ondragend = () => { dragId = null; row.classList.remove('dragging'); document.querySelectorAll('.item.drop-target').forEach((el) => el.classList.remove('drop-target')); };
+    row.ondragover = (e) => { if (dragId && dragId !== it.id && colItems.some((x) => x.id === dragId)) { e.preventDefault(); row.classList.add('drop-target'); } };
+    row.ondragleave = () => row.classList.remove('drop-target');
+    row.ondrop = (e) => { e.preventDefault(); row.classList.remove('drop-target'); if (dragId && dragId !== it.id) reorderWithin(colItems, dragId, it.id); };
+  }
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
   const t = document.createElement('div');
@@ -526,6 +572,8 @@ function itemRow(it, colId, colItems, isBookmark) {
 
 // Inline-edit a backlog item's title; Enter saves + pins it, Esc/empty reverts.
 function editItemTitle(span, it) {
+  const row = span.closest('.item');
+  if (row) row.draggable = false; // don't let drag hijack text selection while editing
   span.contentEditable = 'true';
   span.textContent = it.title;
   span.focus();
@@ -535,6 +583,7 @@ function editItemTitle(span, it) {
   const finish = (save) => {
     if (done) return; done = true;
     span.contentEditable = 'false';
+    if (row) row.draggable = !it.bookId;
     const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (save && val && val !== it.title) {
       it.title = val; it.titlePinned = true;

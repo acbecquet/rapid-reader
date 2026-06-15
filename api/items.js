@@ -125,6 +125,7 @@ export default async function handler(req, res) {
     if ('bookmarkAt' in body) item.bookmarkAt = body.bookmarkAt; // current book chapter
     if ('deletedAt' in body) item.deletedAt = body.deletedAt; // soft-delete / restore (null)
     if ('titlePinned' in body) item.titlePinned = body.titlePinned; // manual rename sticks
+    if ('order' in body) { if (body.order == null) delete item.order; else item.order = Number(body.order) || 0; } // manual drag position
     await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }

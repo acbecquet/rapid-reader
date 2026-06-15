@@ -87,6 +87,16 @@ test('sessionId upsert preserves a pinned title', async () => {
   await call('DELETE', { query: { id }, body: { hard: true } });
 });
 
+test('PATCH order persists and clears (manual column pinning)', async () => {
+  let r = await call('POST', { body: { text: 'an item to position by hand', sourceType: 'manual' } });
+  const id = r.body.item.id;
+  r = await call('PATCH', { body: { id, order: 3 } });
+  assert.equal(r.body.item.order, 3);
+  r = await call('PATCH', { body: { id, order: null } });
+  assert.equal('order' in r.body.item, false);
+  await call('DELETE', { query: { id }, body: { hard: true } });
+});
+
 test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
   let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
   assert.equal(r.body.item.sourceType, 'codex');
