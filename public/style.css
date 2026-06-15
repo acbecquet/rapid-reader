@@ -403,6 +403,14 @@ body {
 .item.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
 .col-reset { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 11px; padding: 0 2px; }
 .col-reset:hover { color: var(--accent); }
+/* per-column theming (accent colour + density) */
+.col { --col-accent: var(--accent); }
+.col .col-h .col-i { color: var(--col-accent); }
+.col .item.active { border-left-color: var(--col-accent); }
+.col .item.unread .t::before { background: var(--col-accent); }
+.col.compact .item { padding: 3px 9px; }
+.col.compact .col-body { font-size: 10px; }
+.colcfg-color { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; vertical-align: middle; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

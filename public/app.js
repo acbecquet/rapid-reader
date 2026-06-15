@@ -387,8 +387,9 @@ function renderColumns() {
     // the agents column shows one agent at a time, never the noise groups
     if (agentCol) list = list.filter((it) => agentMatch(it) && !NOISE_GROUP.test(it.group || ''));
     const c = document.createElement('div');
-    c.className = 'col';
+    c.className = 'col' + (col.density === 'compact' ? ' compact' : '');
     c.dataset.col = col.id;
+    if (col.color) c.style.setProperty('--col-accent', col.color);
     const h = document.createElement('div');
     h.className = 'col-h';
     h.innerHTML = `<span class="col-i">${icon(col.icon)}</span>`;
@@ -726,11 +727,22 @@ function renderColCfg() {
       };
       srcs.append(chip);
     }
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.className = 'colcfg-color';
+    color.value = col.color || '#e0443e';
+    color.title = 'Column accent';
+    color.oninput = () => { col.color = color.value; };
+    const dens = document.createElement('button');
+    dens.className = 'chip tiny' + (col.density === 'compact' ? ' on' : '');
+    dens.textContent = 'compact';
+    dens.title = 'Denser rows';
+    dens.onclick = () => { col.density = col.density === 'compact' ? 'cozy' : 'compact'; renderColCfg(); };
     const del = document.createElement('button');
     del.className = 'chip';
     del.textContent = '× remove';
     del.onclick = () => { draftCols.splice(idx, 1); renderColCfg(); };
-    card.append(name, srcs, del);
+    card.append(name, color, dens, srcs, del);
     box.append(card);
   });
 }

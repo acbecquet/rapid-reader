@@ -54,6 +54,12 @@ test('PATCH groupAliases stores trimmed names, drops empties', async () => {
   assert.equal('blank' in r.body.prefs.groupAliases, false);
 });
 
+test('PATCH columns keeps per-column color + density', async () => {
+  const r = await call('PATCH', { columns: [{ id: 'x', name: 'X', icon: 'general', sources: ['manual'], color: '#123456', density: 'compact' }] });
+  assert.equal(r.body.prefs.columns[0].color, '#123456');
+  assert.equal(r.body.prefs.columns[0].density, 'compact');
+});
+
 test('GET returns merged prefs; PATCH toggles capture, sources, columns', async () => {
   let r = await call('GET');
   assert.equal(r.body.prefs.capture, true);

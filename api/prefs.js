@@ -31,6 +31,8 @@ export default async function handler(req, res) {
         name: String(c.name || '').slice(0, 24),
         icon: String(c.icon || 'general').slice(0, 24),
         sources: Array.isArray(c.sources) ? c.sources.map((s) => String(s).slice(0, 24)).slice(0, 20) : [],
+        ...(c.color ? { color: String(c.color).slice(0, 24) } : {}),
+        ...(c.density === 'compact' ? { density: 'compact' } : {}),
       }));
     }
     if (body.transcript && body.transcript.roles) {
