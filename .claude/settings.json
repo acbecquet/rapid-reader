@@ -5,6 +5,12 @@
         "source": "github",
         "repo": "anthropics/claude-plugins-official"
       }
+    },
+    "superpowers-dev": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      }
     }
   },
   "enabledPlugins": [
@@ -17,6 +23,7 @@
     "playground@claude-plugins-official",
     "typescript-lsp@claude-plugins-official",
     "swift-lsp@claude-plugins-official",
-    "code-review@claude-plugins-official"
+    "code-review@claude-plugins-official",
+    "superpowers@superpowers-dev"
   ]
 }
