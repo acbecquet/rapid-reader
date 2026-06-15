@@ -32,6 +32,16 @@ test('mergePrefs fills missing fields over stored partials', () => {
   assert.equal(m.columns.length, DEFAULT_COLUMNS.length);
 });
 
+test('defaultPrefs ships transcript role theming; merge fills gaps', () => {
+  const d = defaultPrefs();
+  assert.equal(d.transcript.roles.you.align, 'right');
+  assert.equal(d.transcript.roles.you.box, true);
+  assert.equal(d.transcript.roles.tool.collapsed, true);
+  const m = mergePrefs({ transcript: { roles: { claude: { color: '#abc' } } } });
+  assert.equal(m.transcript.roles.claude.color, '#abc'); // override kept
+  assert.equal(m.transcript.roles.you.label, 'You');     // default preserved
+});
+
 test('GET returns merged prefs; PATCH toggles capture, sources, columns', async () => {
   let r = await call('GET');
   assert.equal(r.body.prefs.capture, true);

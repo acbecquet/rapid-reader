@@ -80,12 +80,16 @@ function logError(kind, message, context = '') {
 addEventListener('error', (e) => logError('window-error', e.message, (e.filename || '') + ':' + (e.lineno || '')));
 addEventListener('unhandledrejection', (e) => logError('unhandled-rejection', e.reason?.message || String(e.reason || '')));
 
-// A title that "looks wrong": empty, only symbols, or leaked markup/markdown.
+// A title that "looks wrong": empty, only symbols, leaked markdown/markup, a
+// file path, or slash-command / handoff / trim-marker text — i.e. not a title.
 function looksBadTitle(t) {
   t = String(t || '').trim();
   if (t.length < 2) return true;
-  if (/^[#*\-–—.·•·\s]+$/.test(t)) return true;       // just markdown/punctuation
-  if (/^[<{[]/.test(t) || /environment_context|AGENTS\.md/i.test(t)) return true; // markup leak
+  if (/^[#*\-–—.·•\s>]+$/.test(t)) return true;                 // only markdown/punctuation
+  if (/^[<{[(]/.test(t)) return true;                           // markup/paren leak: < { [ (
+  if (/^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(t)) return true;  // leading heading/bold/quote/bullet
+  if (/^[@"']*[A-Za-z]:[\\/]/.test(t)) return true;             // a Windows file path, not a title
+  if (/environment_context|AGENTS\.md|command-(name|message|args)|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(t)) return true;
   return false;
 }
 // lazy + capped: heal only items you open, once each, a handful per session
@@ -105,6 +109,31 @@ async function healTitle(item) {
       lastRender = ''; renderColumns();
     }
   } catch { /* logged already; leave the heuristic title */ }
+}
+
+// Title every agent item with the user's most recent prompt (deriveTitle),
+// re-derived from the body — a few per poll, capped. Only IDLE sessions (no
+// sync in ~2 min) so we never fight an actively-syncing session's own title.
+const agentHealed = new Set();
+let agentHealCount = 0;
+async function healAgentTitles() {
+  if (agentHealCount >= 30) return;
+  const idle = Date.now() - 120000;
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
+  let changed = false;
+  for (const it of cand.slice(0, 4)) {
+    agentHealed.add(it.id); agentHealCount++;
+    try {
+      const { text } = await api('GET', 'items', { query: { id: it.id } });
+      const title = P.deriveTitle(text);
+      if (title && title !== it.title) {
+        await api('PATCH', 'items', { body: { id: it.id, title } });
+        it.title = title;
+        changed = true;
+      }
+    } catch { /* try a different item next poll */ }
+  }
+  if (changed) { lastRender = ''; renderColumns(); }
 }
 
 // ---------- backlog list ----------
@@ -147,6 +176,7 @@ async function refresh() {
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
     renderColumns();
+    healAgentTitles();
     updateMcp();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
     // an upserted item (e.g. a live agent session) updates the open reader in
@@ -629,21 +659,61 @@ function buildTranscript() {
   nowSpan = null;
   const bySec = cur.sections.map(() => []);
   cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
+  const hasRoles = cur.sections.some((s) => s.role);
+  const theme = (prefs.transcript && prefs.transcript.roles) || {};
+  let turn = box, turnRole;
+
   cur.sections.forEach((sec, idx) => {
-    if (!bySec[idx].length) return;
+    // role mode: open a new turn block each time the speaker changes
+    if (hasRoles && sec.role !== turnRole) {
+      turnRole = sec.role;
+      const th = sec.role ? (theme[sec.role] || {}) : null;
+      if (th && th.show === false) {
+        turn = null;
+      } else {
+        turn = document.createElement('div');
+        turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
+        if (th) {
+          if (th.box) turn.classList.add('boxed');
+          if (th.align) { turn.style.textAlign = th.align; if (th.box) turn.classList.add('a-' + th.align); }
+          if (th.color) turn.style.color = th.color;
+          const lbl = document.createElement('span');
+          lbl.className = 'turn-label';
+          lbl.textContent = th.label || sec.role;
+          turn.append(lbl);
+        }
+        box.append(turn);
+      }
+    }
+    if (!turn) return; // hidden role
+
+    // tool calls + thinking: collapsed, read from raw (they carry no RSVP tokens)
+    if (sec.role === 'tool' || sec.role === 'think') {
+      const det = document.createElement('details');
+      det.open = (theme[sec.role] || {}).collapsed === false;
+      const sum = document.createElement('summary');
+      sum.textContent = (sec.role === 'tool' ? '⚙ ' : '◇ ') + (sec.type === 'code' ? 'code' : (sec.text || '').slice(0, 64));
+      const pre = document.createElement('pre');
+      pre.textContent = sec.type === 'code' ? stripFence(sec.raw) : (sec.raw || sec.text || '');
+      det.append(sum, pre);
+      turn.append(det);
+      return;
+    }
+
     if (sec.type === 'code') {
       // show the real code here — this is where you read it normally
       const pre = document.createElement('pre');
-      pre.textContent = sec.raw.replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
-      pre.dataset.i = bySec[idx][0][1];
-      box.append(pre);
+      pre.textContent = stripFence(sec.raw);
+      if (bySec[idx][0]) pre.dataset.i = bySec[idx][0][1];
+      turn.append(pre);
       return;
     }
+    if (!bySec[idx].length) return;
+
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';
-    else if (sec.type === 'quote') {
-      // a blockquote: in an agent/chat transcript it's a prompt you wrote
-      // (right-aligned, labelled); elsewhere it's just a quote
+    else if (!hasRoles && sec.type === 'quote') {
+      // legacy (pre-sentinel) transcript: your prompts as a right-aligned label
       if (AGENT_SOURCES.has(cur.item.sourceType)) {
         para.className = 'you';
         const lbl = document.createElement('span');
@@ -661,8 +731,9 @@ function buildTranscript() {
       if (t.link) s.classList.add('link');
       para.append(s, ' ');
     }
-    box.append(para);
+    turn.append(para);
   });
+
   box.onclick = (e) => {
     const el = e.target.closest('[data-i]');
     if (!el) return;
@@ -672,6 +743,10 @@ function buildTranscript() {
     seek(i);
   };
   applyTranscript();
+}
+
+function stripFence(raw) {
+  return (raw || '').replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
 }
 
 // ---------- linked pages (URL inside a text → its own backlog item) ----------
@@ -1241,6 +1316,39 @@ function fillSettingsForm() {
   $('s-aikey-btn').textContent = hasKey ? 'Replace your Gemini key' : 'Add your free Gemini key';
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
+  renderRoleSettings();
+}
+
+// Per-role transcript appearance controls (you / claude / tool / think). Each
+// change patches prefs.transcript and re-renders the open transcript at once.
+function renderRoleSettings() {
+  const box = $('s-roles');
+  if (!box) return;
+  const roles = (prefs && prefs.transcript && prefs.transcript.roles) || {};
+  box.textContent = '';
+  for (const r of ['you', 'claude', 'tool', 'think']) {
+    const v = roles[r] || {};
+    const row = document.createElement('div');
+    row.className = 'role-row';
+    row.innerHTML = `
+      <b>${r}</b>
+      <label><input type="checkbox" data-k="show" ${v.show !== false ? 'checked' : ''}> show</label>
+      <input data-k="label" value="${v.label || r}" maxlength="24" class="num">
+      <select data-k="align"><option ${v.align === 'left' ? 'selected' : ''}>left</option><option ${v.align === 'center' ? 'selected' : ''}>center</option><option ${v.align === 'right' ? 'selected' : ''}>right</option></select>
+      <input type="color" data-k="color" value="${v.color || '#cfe8d8'}">
+      <label><input type="checkbox" data-k="box" ${v.box ? 'checked' : ''}> box</label>`;
+    row.onchange = async (e) => {
+      const k = e.target.dataset.k;
+      if (!k) return;
+      const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      const t = (prefs.transcript && prefs.transcript.roles) ? prefs.transcript : { roles: {} };
+      t.roles[r] = { ...t.roles[r], [k]: val };
+      prefs.transcript = t;
+      try { const { prefs: np } = await api('PATCH', 'prefs', { body: { transcript: t } }); prefs = np; } catch {}
+      if (cur) buildTranscript();
+    };
+    box.append(row);
+  }
 }
 
 $('settings-btn').onclick = () => { fillSettingsForm(); $('settings').hidden = false; };
