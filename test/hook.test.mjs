@@ -14,21 +14,30 @@ const TRANSCRIPT = jl([
   { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Docs updated: the README now explains the cookie lifetime and the new flag.' }] } },
 ]);
 
-test('compileTranscript: prompts become "You wrote" blockquotes, assistant prose follows, captures first prompt', () => {
+test('compileTranscript: turns get [[rr:role]] sentinels, tool calls captured, first prompt kept', () => {
   const { md, firstPrompt } = compileTranscript(TRANSCRIPT);
-  assert.ok(md.startsWith('> Fix the login bug and then explain what was wrong with the session handling'));
+  assert.ok(md.startsWith('[[rr:you]]\nFix the login bug and then explain what was wrong with the session handling'));
   assert.ok(md.includes('stale cookie'));
-  assert.ok(md.includes('> great, now update the docs'));
-  assert.ok(md.indexOf('stale cookie') < md.indexOf('> great'));
+  assert.ok(md.includes('[[rr:you]]\ngreat, now update the docs'));
+  assert.ok(md.indexOf('stale cookie') < md.indexOf('great, now update the docs'));
+  assert.ok(md.includes('[[rr:tool Bash]]')); // tool calls captured as clean turns, not raw JSON
   assert.ok(!md.includes('tool_use'));
   assert.ok(firstPrompt.startsWith('Fix the login bug'));
 });
 
-test('compileTranscript trims very long transcripts from the front', () => {
+test('compileTranscript keeps long transcripts whole, trimming only past the ~1MB ceiling', () => {
+  // ~100k is well under the ceiling — kept intact (no mid-conversation cut)
   const long = jl([{ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'word '.repeat(20000) }] } }]);
-  const { md } = compileTranscript(long);
-  assert.ok(md.startsWith('(earlier conversation trimmed)'));
-  assert.ok(md.length < 61000);
+  assert.ok(!compileTranscript(long).md.includes('trimmed'));
+
+  // past ~1MB, whole oldest turns are dropped (never mid-turn)
+  const entries = [];
+  for (let i = 0; i < 30; i++) entries.push({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'TURN' + i + ' ' + 'word '.repeat(8000) }] } });
+  const { md } = compileTranscript(jl(entries));
+  assert.ok(md.startsWith('(earlier turns trimmed)'));
+  assert.ok(md.length <= 1_000_060);
+  assert.ok(!md.includes('TURN0 ')); // oldest dropped
+  assert.ok(md.includes('TURN29'));  // newest kept
 });
 
 test('buildPayload: title from first prompt, group from project folder', () => {
