@@ -31,6 +31,8 @@ export default async function handler(req, res) {
         name: String(c.name || '').slice(0, 24),
         icon: String(c.icon || 'general').slice(0, 24),
         sources: Array.isArray(c.sources) ? c.sources.map((s) => String(s).slice(0, 24)).slice(0, 20) : [],
+        ...(c.color ? { color: String(c.color).slice(0, 24) } : {}),
+        ...(c.density === 'compact' ? { density: 'compact' } : {}),
       }));
     }
     if (body.transcript && body.transcript.roles) {
@@ -47,6 +49,14 @@ export default async function handler(req, res) {
         };
       }
       prefs.transcript = { roles };
+    }
+    if (body.groupAliases && typeof body.groupAliases === 'object') {
+      const aliases = {};
+      for (const [k, v] of Object.entries(body.groupAliases).slice(0, 200)) {
+        const name = String(v || '').trim().slice(0, 60);
+        if (name) aliases[String(k).slice(0, 80)] = name;
+      }
+      prefs.groupAliases = aliases;
     }
     if ('geminiKey' in body) {
       const key = String(body.geminiKey || '').trim().slice(0, 200);

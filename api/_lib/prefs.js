@@ -40,6 +40,7 @@ export function defaultPrefs() {
     sources: Object.fromEntries(SOURCES.map((s) => [s, true])),
     columns: DEFAULT_COLUMNS,
     transcript: defaultTranscript(),
+    groupAliases: {}, // subgroup display-name overrides (real group kept)
     geminiKey: '', // this user's own free Gemini key (bring-your-own quota)
   };
 }
@@ -55,6 +56,7 @@ export function mergePrefs(stored) {
     sources: { ...d.sources, ...(stored.sources || {}) },
     columns: Array.isArray(stored.columns) && stored.columns.length ? stored.columns : d.columns,
     transcript: mergeTranscript(stored.transcript),
+    groupAliases: (stored.groupAliases && typeof stored.groupAliases === 'object') ? stored.groupAliases : {},
     geminiKey: typeof stored.geminiKey === 'string' ? stored.geminiKey : '',
   };
 }

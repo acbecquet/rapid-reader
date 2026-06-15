@@ -389,6 +389,31 @@ body {
 .role-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 11px; flex-wrap: wrap; }
 .role-row b { text-transform: capitalize; min-width: 52px; }
 .role-row input.num { width: 90px; }
+/* per-item delete ✕ (row is already position:relative) + Undo toast + Trash */
+.item-del { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--dim); font-size: 11px; cursor: pointer; opacity: 0; padding: 2px 4px; }
+.item:hover .item-del { opacity: .6; }
+.item-del:hover { opacity: 1; color: var(--accent); }
+.toast-action { margin-left: 8px; background: none; border: 1px solid var(--accent); color: inherit; font: inherit; font-size: 11px; border-radius: 99px; padding: 1px 9px; cursor: pointer; }
+.trash-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.trash-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* inline rename (item title / group name) */
+.item .t[contenteditable="true"], .group .g-n[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: #0c0c10; white-space: normal; overflow: visible; cursor: text; }
+/* drag-to-reorder */
+.item.dragging { opacity: .4; }
+.item.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
+.col-reset { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 11px; padding: 0 2px; }
+.col-reset:hover { color: var(--accent); }
+/* per-column theming (accent colour + density) */
+.col { --col-accent: var(--accent); }
+.col .col-h .col-i { color: var(--col-accent); }
+.col .item.active { border-left-color: var(--col-accent); }
+.col .item.unread .t::before { background: var(--col-accent); }
+.col.compact .item { padding: 3px 9px; }
+.col.compact .col-body { font-size: 10px; }
+.colcfg-color { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; vertical-align: middle; }
+/* live preview line ("where we are now") under an agent item's title */
+.item { flex-wrap: wrap; }
+.item-pv { flex-basis: 100%; min-width: 0; font-size: 9.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 1px 0 0; padding-left: 11px; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;
