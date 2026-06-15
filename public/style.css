@@ -374,6 +374,16 @@ body {
   margin-bottom: 2px;
 }
 #transcript p.quote { border-left: 2px solid var(--line); padding-left: 10px; font-style: italic; }
+/* role-attributed agent turns (you / claude / tool / think) */
+#transcript .turn { margin: 0 0 14px; }
+#transcript .turn-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; opacity: .55; margin-bottom: 3px; }
+#transcript .turn.boxed { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+#transcript .turn.claude { color: var(--reader-fg); }
+#transcript .turn.tool, #transcript .turn.think { opacity: .7; }
+#transcript .turn details > summary { cursor: pointer; color: var(--dim); font-size: 12px; list-style: none; }
+#transcript .turn details > summary::-webkit-details-marker { display: none; }
+#transcript .turn details[open] > summary { color: var(--reader-fg); }
+#transcript .turn details pre { margin: 6px 0 0; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

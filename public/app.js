@@ -629,21 +629,61 @@ function buildTranscript() {
   nowSpan = null;
   const bySec = cur.sections.map(() => []);
   cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
+  const hasRoles = cur.sections.some((s) => s.role);
+  const theme = (prefs.transcript && prefs.transcript.roles) || {};
+  let turn = box, turnRole;
+
   cur.sections.forEach((sec, idx) => {
-    if (!bySec[idx].length) return;
+    // role mode: open a new turn block each time the speaker changes
+    if (hasRoles && sec.role !== turnRole) {
+      turnRole = sec.role;
+      const th = sec.role ? (theme[sec.role] || {}) : null;
+      if (th && th.show === false) {
+        turn = null;
+      } else {
+        turn = document.createElement('div');
+        turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
+        if (th) {
+          if (th.box) turn.classList.add('boxed');
+          if (th.align) turn.style.textAlign = th.align;
+          if (th.color) turn.style.color = th.color;
+          const lbl = document.createElement('span');
+          lbl.className = 'turn-label';
+          lbl.textContent = th.label || sec.role;
+          turn.append(lbl);
+        }
+        box.append(turn);
+      }
+    }
+    if (!turn) return; // hidden role
+
+    // tool calls + thinking: collapsed, read from raw (they carry no RSVP tokens)
+    if (sec.role === 'tool' || sec.role === 'think') {
+      const det = document.createElement('details');
+      det.open = (theme[sec.role] || {}).collapsed === false;
+      const sum = document.createElement('summary');
+      sum.textContent = (sec.role === 'tool' ? '⚙ ' : '◇ ') + (sec.type === 'code' ? 'code' : (sec.text || '').slice(0, 64));
+      const pre = document.createElement('pre');
+      pre.textContent = sec.type === 'code' ? stripFence(sec.raw) : (sec.raw || sec.text || '');
+      det.append(sum, pre);
+      turn.append(det);
+      return;
+    }
+
     if (sec.type === 'code') {
       // show the real code here — this is where you read it normally
       const pre = document.createElement('pre');
-      pre.textContent = sec.raw.replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
-      pre.dataset.i = bySec[idx][0][1];
-      box.append(pre);
+      pre.textContent = stripFence(sec.raw);
+      if (bySec[idx][0]) pre.dataset.i = bySec[idx][0][1];
+      turn.append(pre);
       return;
     }
+    if (!bySec[idx].length) return;
+
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';
-    else if (sec.type === 'quote') {
-      // a blockquote: in an agent/chat transcript it's a prompt you wrote
-      // (right-aligned, labelled); elsewhere it's just a quote
+    else if (!hasRoles && sec.type === 'quote') {
+      // legacy (pre-sentinel) transcript: your prompts as a right-aligned label
       if (AGENT_SOURCES.has(cur.item.sourceType)) {
         para.className = 'you';
         const lbl = document.createElement('span');
@@ -661,8 +701,9 @@ function buildTranscript() {
       if (t.link) s.classList.add('link');
       para.append(s, ' ');
     }
-    box.append(para);
+    turn.append(para);
   });
+
   box.onclick = (e) => {
     const el = e.target.closest('[data-i]');
     if (!el) return;
@@ -672,6 +713,10 @@ function buildTranscript() {
     seek(i);
   };
   applyTranscript();
+}
+
+function stripFence(raw) {
+  return (raw || '').replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
 }
 
 // ---------- linked pages (URL inside a text → its own backlog item) ----------
