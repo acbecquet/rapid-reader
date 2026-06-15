@@ -645,7 +645,7 @@ function buildTranscript() {
         turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
         if (th) {
           if (th.box) turn.classList.add('boxed');
-          if (th.align) turn.style.textAlign = th.align;
+          if (th.align) { turn.style.textAlign = th.align; if (th.box) turn.classList.add('a-' + th.align); }
           if (th.color) turn.style.color = th.color;
           const lbl = document.createElement('span');
           lbl.className = 'turn-label';

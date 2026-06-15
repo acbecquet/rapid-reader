@@ -34,7 +34,7 @@ test('mergePrefs fills missing fields over stored partials', () => {
 
 test('defaultPrefs ships transcript role theming; merge fills gaps', () => {
   const d = defaultPrefs();
-  assert.equal(d.transcript.roles.you.align, 'left');
+  assert.equal(d.transcript.roles.you.align, 'right');
   assert.equal(d.transcript.roles.you.box, true);
   assert.equal(d.transcript.roles.tool.collapsed, true);
   const m = mergePrefs({ transcript: { roles: { claude: { color: '#abc' } } } });

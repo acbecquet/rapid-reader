@@ -31,7 +31,7 @@ put it in the reader, and let me always tell my words from Claude's."
 ## Decisions (locked in brainstorm)
 
 1. Build transcript sub-project **first**.
-2. Render: **your messages left-justified in a labelled tinted box; Claude
+2. Render: **your messages right-justified in a labelled tinted box; Claude
    distinct; tool-calls & thinking collapsed** (never RSVP'd word-by-word).
 3. Architecture **A — role markers in the markdown** (not a JSON body fork).
 4. **Rich per-role customization** (color / alignment / label / show-hide).

@@ -20,7 +20,7 @@ export const DEFAULT_COLUMNS = [
 // calls, and thinking are labelled, aligned, coloured, boxed, or hidden.
 export function defaultTranscript() {
   return { roles: {
-    you:    { label: 'You',      align: 'left', color: '', box: true,  show: true },
+    you:    { label: 'You',      align: 'right', color: '', box: true,  show: true },
     claude: { label: 'Claude',   align: 'left', color: '', box: false, show: true },
     tool:   { label: 'tool',     align: 'left', color: '', show: true, collapsed: true },
     think:  { label: 'thinking', align: 'left', color: '', show: true, collapsed: true },

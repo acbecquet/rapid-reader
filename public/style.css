@@ -377,7 +377,9 @@ body {
 /* role-attributed agent turns (you / claude / tool / think) */
 #transcript .turn { margin: 0 0 14px; }
 #transcript .turn-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; opacity: .55; margin-bottom: 3px; }
-#transcript .turn.boxed { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+#transcript .turn.boxed { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: fit-content; max-width: 88%; }
+#transcript .turn.boxed.a-right { margin-left: auto; }
+#transcript .turn.boxed.a-center { margin-left: auto; margin-right: auto; }
 #transcript .turn.claude { color: var(--reader-fg); }
 #transcript .turn.tool, #transcript .turn.think { opacity: .7; }
 #transcript .turn details > summary { cursor: pointer; color: var(--dim); font-size: 12px; list-style: none; }
