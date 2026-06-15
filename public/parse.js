@@ -153,13 +153,16 @@ export function isCodeHeavy(text) {
 // (or prose), skipping slash-command / markup / injected lines. Pure → testable.
 // Used to self-heal gibberish agent titles from older captures.
 export function deriveTitle(text) {
-  const isBad = (s) => !s || s.length < 2 || /^[<{[]/.test(s)
-    || /^[#*\-–—.·•\s]+$/.test(s)
-    || /environment_context|command-(name|message|args)|AGENTS\.md|system-reminder/i.test(s);
+  const isBad = (s) => !s || s.length < 2
+    || /^[<{[(]/.test(s)
+    || /^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(s)
+    || /^[@"']*[A-Za-z]:[\\/]/.test(s)
+    || /^[#*\-–—.·•\s>]+$/.test(s)
+    || /environment_context|command-(name|message|args)|AGENTS\.md|system-reminder|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(s);
   const secs = parseStructure(String(text || ''));
   const pick = secs.find((s) => (s.role === 'you' || s.type === 'quote') && !isBad(s.text))
     || secs.find((s) => (s.type === 'paragraph' || s.type === 'heading') && !isBad(s.text));
-  const base = (pick?.text || '').replace(/\s+/g, ' ').trim();
+  const base = (pick?.text || '').replace(/[*_`~]+/g, '').replace(/\s+/g, ' ').trim();
   if (!base) return '';
   const words = base.split(' ');
   return words.slice(0, 10).join(' ').slice(0, 90) + (words.length > 10 ? '…' : '');

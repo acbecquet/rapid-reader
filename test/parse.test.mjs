@@ -126,3 +126,9 @@ test('deriveTitle skips command/markup turns, picks the first real human line', 
   assert.equal(deriveTitle(legacy), 'please refactor the auth module');
   assert.equal(deriveTitle('```\n```'), ''); // nothing usable
 });
+
+test('deriveTitle skips handoff/markdown/trim/path preamble (the real backlog junk)', () => {
+  assert.equal(deriveTitle('# Resume work from a handoff document\nYou are tasked\n\n> add a dogfight scoring mode'), 'add a dogfight scoring mode');
+  assert.equal(deriveTitle('(earlier conversation trimmed)\n\n> wire up the squad join flow'), 'wire up the squad join flow');
+  assert.equal(deriveTitle('[[rr:you]]\n**NEVER gate on IsAI()**\n\n[[rr:you]]\nclamp the crew index to the roster size'), 'clamp the crew index to the roster size');
+});

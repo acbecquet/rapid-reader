@@ -80,12 +80,16 @@ function logError(kind, message, context = '') {
 addEventListener('error', (e) => logError('window-error', e.message, (e.filename || '') + ':' + (e.lineno || '')));
 addEventListener('unhandledrejection', (e) => logError('unhandled-rejection', e.reason?.message || String(e.reason || '')));
 
-// A title that "looks wrong": empty, only symbols, or leaked markup/markdown.
+// A title that "looks wrong": empty, only symbols, leaked markdown/markup, a
+// file path, or slash-command / handoff / trim-marker text — i.e. not a title.
 function looksBadTitle(t) {
   t = String(t || '').trim();
   if (t.length < 2) return true;
-  if (/^[#*\-–—.·•·\s]+$/.test(t)) return true;       // just markdown/punctuation
-  if (/^[<{[]/.test(t) || /environment_context|AGENTS\.md/i.test(t)) return true; // markup leak
+  if (/^[#*\-–—.·•\s>]+$/.test(t)) return true;                 // only markdown/punctuation
+  if (/^[<{[(]/.test(t)) return true;                           // markup/paren leak: < { [ (
+  if (/^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(t)) return true;  // leading heading/bold/quote/bullet
+  if (/^[@"']*[A-Za-z]:[\\/]/.test(t)) return true;             // a Windows file path, not a title
+  if (/environment_context|AGENTS\.md|command-(name|message|args)|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(t)) return true;
   return false;
 }
 // lazy + capped: heal only items you open, once each, a handful per session
