@@ -169,3 +169,11 @@ export function deriveTitle(text) {
   const words = base.split(' ');
   return words.slice(0, 10).join(' ').slice(0, 90) + (words.length > 10 ? '…' : '');
 }
+
+// Claude's latest turn, for the backlog preview line ("where we are now"). Pure.
+export function derivePreview(text) {
+  const secs = parseStructure(String(text || ''));
+  const claude = secs.filter((s) => s.role === 'claude' && (s.type === 'paragraph' || s.type === 'heading'));
+  const last = claude[claude.length - 1] || [...secs].reverse().find((s) => s.type === 'paragraph' || s.type === 'heading');
+  return (last?.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+}

@@ -131,6 +131,17 @@ test('buildPayload drops background sessions; title is your most recent prompt',
   assert.equal(p.title, 'the crew controller crashes on spawn, please investigate and fix it'); // your prompt, not the summary
 });
 
+test('buildPayload previews Claude\'s latest turn (title = your prompt, preview = where we are)', () => {
+  const p = buildPayload({ jsonl: jl([
+    { role: 'user', content: 'start the scoreboard work' },
+    { role: 'assistant', content: 'Set up the overlay.' },
+    { role: 'user', content: 'now persist the scores' },
+    { role: 'assistant', content: 'Persisted to disk and added a test.' },
+  ]), sessionId: 'pv-1' });
+  assert.ok(p.title.startsWith('now persist the scores'));
+  assert.equal(p.preview, 'Persisted to disk and added a test.');
+});
+
 test('Codex env-context block is skipped for the title; cwd parsed from it', () => {
   const codex = jl([
     { type: 'message', role: 'user', content: [{ type: 'input_text', text: '<environment_context> <cwd>/n/Easy Red 2/ER2DogfightMode</cwd> <shell>powershell</shell> </environment_context>' }] },

@@ -411,6 +411,9 @@ body {
 .col.compact .item { padding: 3px 9px; }
 .col.compact .col-body { font-size: 10px; }
 .colcfg-color { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; vertical-align: middle; }
+/* live preview line ("where we are now") under an agent item's title */
+.item { flex-wrap: wrap; }
+.item-pv { flex-basis: 100%; min-width: 0; font-size: 9.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 1px 0 0; padding-left: 11px; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

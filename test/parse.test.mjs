@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStructure, readingTokens, isCodeHeavy, deriveTitle } from '../public/parse.js';
+import { parseStructure, readingTokens, isCodeHeavy, deriveTitle, derivePreview } from '../public/parse.js';
 
 const SAMPLE = `# Change Summary
 
@@ -130,6 +130,11 @@ test('deriveTitle skips command/markup turns, picks the first real human line', 
 test('deriveTitle picks your MOST RECENT prompt, not the first', () => {
   const body = '[[rr:you]]\nset up the project\n\n[[rr:claude]]\nok\n\n[[rr:you]]\nnow add the scoreboard overlay';
   assert.equal(deriveTitle(body), 'now add the scoreboard overlay');
+});
+
+test('derivePreview takes Claude\'s latest turn', () => {
+  const body = '[[rr:you]]\ndo X\n\n[[rr:claude]]\nfirst reply\n\n[[rr:you]]\ndo Y\n\n[[rr:claude]]\nsecond reply with the result';
+  assert.equal(derivePreview(body), 'second reply with the result');
 });
 
 test('deriveTitle skips handoff/markdown/trim/path junk and Claude prose', () => {

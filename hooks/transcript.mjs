@@ -145,7 +145,7 @@ function isJunkPrompt(s) {
 // sentinel; content follows verbatim. Injected context dropped. No mid-turn cut.
 export function compileTranscript(jsonl) {
   const out = [];
-  let firstPrompt = '', lastPrompt = '';
+  let firstPrompt = '', lastPrompt = '', lastClaude = '';
   for (const line of jsonl.split('\n')) {
     let entry; try { entry = JSON.parse(line); } catch { continue; }
     const t = blocksOf(entry);
@@ -159,6 +159,7 @@ export function compileTranscript(jsonl) {
           out.push('[[rr:you]]\n' + b.text);
         } else {
           out.push('[[rr:claude]]\n' + b.text);
+          lastClaude = b.text; // for the backlog preview line ("where we are now")
         }
       } else if (b.kind === 'think') {
         if (b.text) out.push('[[rr:think]]\n' + b.text);
@@ -176,7 +177,7 @@ export function compileTranscript(jsonl) {
     while (turns.length > 1 && turns.join('\n\n').length > TEXT_CAP) turns.shift();
     md = '(earlier turns trimmed)\n\n' + turns.join('\n\n');
   }
-  return { md, firstPrompt, lastPrompt };
+  return { md, firstPrompt, lastPrompt, lastClaude };
 }
 
 // Build the /api/items payload, or null for thin/background sessions. `title`
@@ -184,11 +185,12 @@ export function compileTranscript(jsonl) {
 // quick title is the session summary || first prompt (instant, no LLM).
 export function buildPayload({ jsonl, sessionId, group, sourceType, title }) {
   if (isBackground(jsonl)) return null;
-  const { md, firstPrompt, lastPrompt } = compileTranscript(jsonl);
+  const { md, firstPrompt, lastPrompt, lastClaude } = compileTranscript(jsonl);
   if (md.replace(/\[\[rr:[^\]]*\]\]/g, '').split(/\s+/).filter(Boolean).length < 8) return null;
   // Title = your most recent prompt (strictly your words — no summary, no LLM).
   const base = (title || lastPrompt || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
   const words = base.split(' ');
   const quick = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
-  return { sessionId, text: md, title: quick, group: group || 'sessions', sourceType: sourceType || 'claude_code' };
+  const preview = (lastClaude || '').replace(/\s+/g, ' ').trim().slice(0, 140); // Claude's latest → preview line
+  return { sessionId, text: md, title: quick, group: group || 'sessions', sourceType: sourceType || 'claude_code', ...(preview ? { preview } : {}) };
 }

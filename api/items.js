@@ -102,7 +102,7 @@ export default async function handler(req, res) {
     const sourceType = SOURCE_TYPES.includes(body.sourceType)
       ? body.sourceType : (digested ? 'article' : defaultSourceType(url));
 
-    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group, bookId: body.bookId, chapterIndex: body.chapterIndex, ts: body.ts });
+    const out = await addItem(uid, { text, sourceType, title, url, words: body.words, sessionId: body.sessionId, group: body.group, bookId: body.bookId, chapterIndex: body.chapterIndex, ts: body.ts, preview: body.preview });
     if (out.ignored) return res.status(200).json({ ignored: true });
     return res.status(out.updated ? 200 : 201).json({ item: out.item });
   }
@@ -126,6 +126,7 @@ export default async function handler(req, res) {
     if ('deletedAt' in body) item.deletedAt = body.deletedAt; // soft-delete / restore (null)
     if ('titlePinned' in body) item.titlePinned = body.titlePinned; // manual rename sticks
     if ('order' in body) { if (body.order == null) delete item.order; else item.order = Number(body.order) || 0; } // manual drag position
+    if ('preview' in body) item.preview = String(body.preview || '').slice(0, 200); // latest-turn line
     await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }

@@ -125,10 +125,14 @@ async function healAgentTitles() {
     agentHealed.add(it.id); agentHealCount++;
     try {
       const { text } = await api('GET', 'items', { query: { id: it.id } });
+      const patch = {};
       const title = P.deriveTitle(text);
-      if (title && title !== it.title) {
-        await api('PATCH', 'items', { body: { id: it.id, title } });
-        it.title = title;
+      const preview = P.derivePreview(text);
+      if (title && title !== it.title) patch.title = title;
+      if (preview && preview !== it.preview) patch.preview = preview;
+      if (Object.keys(patch).length) {
+        Object.assign(it, patch);
+        api('PATCH', 'items', { body: { id: it.id, ...patch } }).catch(() => {});
         changed = true;
       }
     } catch { /* try a different item next poll */ }
@@ -549,6 +553,12 @@ function itemRow(it, colId, colItems, isBookmark) {
     toast('Deleted', { label: 'Undo', fn: () => undelete(gone) });
   };
   row.append(del);
+  if (it.preview && !it.bookId) {
+    const pv = document.createElement('div');
+    pv.className = 'item-pv';
+    pv.textContent = it.preview;
+    row.append(pv);
+  }
   const activate = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
