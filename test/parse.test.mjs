@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStructure, readingTokens, isCodeHeavy } from '../public/parse.js';
+import { parseStructure, readingTokens, isCodeHeavy, deriveTitle } from '../public/parse.js';
 
 const SAMPLE = `# Change Summary
 
@@ -116,4 +116,13 @@ test('readingTokens excludes tool and think turns from the RSVP stream', () => {
 test('bodies without sentinels keep role null (legacy unchanged)', () => {
   const s = parseStructure('Just prose.\n\n> a quote');
   assert.deepEqual(s.map((x) => x.role), [null, null]);
+});
+
+test('deriveTitle skips command/markup turns, picks the first real human line', () => {
+  const body = '[[rr:you]]\n<command-message>resume_handoff</command-message>\n\n[[rr:you]]\nFix the crash in the crew controller and add a test\n\n[[rr:claude]]\nDone.';
+  assert.equal(deriveTitle(body), 'Fix the crash in the crew controller and add a…');
+  // legacy '>'-quote body with a leaked command first
+  const legacy = '> <command-name>/resume_handoff</command-name>\n\n> please refactor the auth module\n\nSure.';
+  assert.equal(deriveTitle(legacy), 'please refactor the auth module');
+  assert.equal(deriveTitle('```\n```'), ''); // nothing usable
 });

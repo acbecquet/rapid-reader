@@ -107,6 +107,30 @@ async function healTitle(item) {
   } catch { /* logged already; leave the heuristic title */ }
 }
 
+// Clean gibberish agent titles (slash-command / markup leaks from older
+// captures) by re-deriving from the body — a few per poll, capped per session,
+// no LLM. The backlog self-heals; a re-sync cleans them in bulk.
+const agentHealed = new Set();
+let agentHealCount = 0;
+async function healAgentTitles() {
+  if (agentHealCount >= 20) return;
+  const bad = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && looksBadTitle(it.title) && !agentHealed.has(it.id));
+  let changed = false;
+  for (const it of bad.slice(0, 3)) {
+    agentHealed.add(it.id); agentHealCount++;
+    try {
+      const { text } = await api('GET', 'items', { query: { id: it.id } });
+      const title = P.deriveTitle(text);
+      if (title && !looksBadTitle(title)) {
+        await api('PATCH', 'items', { body: { id: it.id, title } });
+        it.title = title;
+        changed = true;
+      }
+    } catch { /* leave it; a different item next poll */ }
+  }
+  if (changed) { lastRender = ''; renderColumns(); }
+}
+
 // ---------- backlog list ----------
 const SOURCE_LABEL = {
   manual: 'manual', web: 'web', claude_code: 'claude code', codex: 'codex',
@@ -147,6 +171,7 @@ async function refresh() {
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
     renderColumns();
+    healAgentTitles();
     updateMcp();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
     // an upserted item (e.g. a live agent session) updates the open reader in

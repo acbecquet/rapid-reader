@@ -148,3 +148,19 @@ export function isCodeHeavy(text) {
   const totalWords = text.split(/\s+/).length;
   return codeWords / totalWords > 0.6;
 }
+
+// Derive a clean, human title from a transcript body: the first real user turn
+// (or prose), skipping slash-command / markup / injected lines. Pure → testable.
+// Used to self-heal gibberish agent titles from older captures.
+export function deriveTitle(text) {
+  const isBad = (s) => !s || s.length < 2 || /^[<{[]/.test(s)
+    || /^[#*\-–—.·•\s]+$/.test(s)
+    || /environment_context|command-(name|message|args)|AGENTS\.md|system-reminder/i.test(s);
+  const secs = parseStructure(String(text || ''));
+  const pick = secs.find((s) => (s.role === 'you' || s.type === 'quote') && !isBad(s.text))
+    || secs.find((s) => (s.type === 'paragraph' || s.type === 'heading') && !isBad(s.text));
+  const base = (pick?.text || '').replace(/\s+/g, ' ').trim();
+  if (!base) return '';
+  const words = base.split(' ');
+  return words.slice(0, 10).join(' ').slice(0, 90) + (words.length > 10 ? '…' : '');
+}
