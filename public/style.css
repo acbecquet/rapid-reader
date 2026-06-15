@@ -384,6 +384,9 @@ body {
 #transcript .turn details > summary::-webkit-details-marker { display: none; }
 #transcript .turn details[open] > summary { color: var(--reader-fg); }
 #transcript .turn details pre { margin: 6px 0 0; }
+.role-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 11px; flex-wrap: wrap; }
+.role-row b { text-transform: capitalize; min-width: 52px; }
+.role-row input.num { width: 90px; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

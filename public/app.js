@@ -1286,6 +1286,39 @@ function fillSettingsForm() {
   $('s-aikey-btn').textContent = hasKey ? 'Replace your Gemini key' : 'Add your free Gemini key';
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
+  renderRoleSettings();
+}
+
+// Per-role transcript appearance controls (you / claude / tool / think). Each
+// change patches prefs.transcript and re-renders the open transcript at once.
+function renderRoleSettings() {
+  const box = $('s-roles');
+  if (!box) return;
+  const roles = (prefs && prefs.transcript && prefs.transcript.roles) || {};
+  box.textContent = '';
+  for (const r of ['you', 'claude', 'tool', 'think']) {
+    const v = roles[r] || {};
+    const row = document.createElement('div');
+    row.className = 'role-row';
+    row.innerHTML = `
+      <b>${r}</b>
+      <label><input type="checkbox" data-k="show" ${v.show !== false ? 'checked' : ''}> show</label>
+      <input data-k="label" value="${v.label || r}" maxlength="24" class="num">
+      <select data-k="align"><option ${v.align === 'left' ? 'selected' : ''}>left</option><option ${v.align === 'center' ? 'selected' : ''}>center</option><option ${v.align === 'right' ? 'selected' : ''}>right</option></select>
+      <input type="color" data-k="color" value="${v.color || '#cfe8d8'}">
+      <label><input type="checkbox" data-k="box" ${v.box ? 'checked' : ''}> box</label>`;
+    row.onchange = async (e) => {
+      const k = e.target.dataset.k;
+      if (!k) return;
+      const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      const t = (prefs.transcript && prefs.transcript.roles) ? prefs.transcript : { roles: {} };
+      t.roles[r] = { ...t.roles[r], [k]: val };
+      prefs.transcript = t;
+      try { const { prefs: np } = await api('PATCH', 'prefs', { body: { transcript: t } }); prefs = np; } catch {}
+      if (cur) buildTranscript();
+    };
+    box.append(row);
+  }
 }
 
 $('settings-btn').onclick = () => { fillSettingsForm(); $('settings').hidden = false; };
