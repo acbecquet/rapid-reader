@@ -48,6 +48,14 @@ export default async function handler(req, res) {
       }
       prefs.transcript = { roles };
     }
+    if (body.groupAliases && typeof body.groupAliases === 'object') {
+      const aliases = {};
+      for (const [k, v] of Object.entries(body.groupAliases).slice(0, 200)) {
+        const name = String(v || '').trim().slice(0, 60);
+        if (name) aliases[String(k).slice(0, 80)] = name;
+      }
+      prefs.groupAliases = aliases;
+    }
     if ('geminiKey' in body) {
       const key = String(body.geminiKey || '').trim().slice(0, 200);
       if (key && !(await validateGeminiKey(key))) {

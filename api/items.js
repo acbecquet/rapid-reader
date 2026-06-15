@@ -124,6 +124,7 @@ export default async function handler(req, res) {
     if ('archivedAt' in body) item.archivedAt = body.archivedAt;
     if ('bookmarkAt' in body) item.bookmarkAt = body.bookmarkAt; // current book chapter
     if ('deletedAt' in body) item.deletedAt = body.deletedAt; // soft-delete / restore (null)
+    if ('titlePinned' in body) item.titlePinned = body.titlePinned; // manual rename sticks
     await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }

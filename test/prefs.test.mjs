@@ -42,6 +42,18 @@ test('defaultPrefs ships transcript role theming; merge fills gaps', () => {
   assert.equal(m.transcript.roles.you.label, 'You');     // default preserved
 });
 
+test('groupAliases: default empty, stored merged through', () => {
+  assert.deepEqual(defaultPrefs().groupAliases, {});
+  const m = mergePrefs({ groupAliases: { 'er2-mod': 'ER2 Mod' } });
+  assert.equal(m.groupAliases['er2-mod'], 'ER2 Mod');
+});
+
+test('PATCH groupAliases stores trimmed names, drops empties', async () => {
+  const r = await call('PATCH', { groupAliases: { proj: '  My Project  ', blank: '' } });
+  assert.equal(r.body.prefs.groupAliases.proj, 'My Project');
+  assert.equal('blank' in r.body.prefs.groupAliases, false);
+});
+
 test('GET returns merged prefs; PATCH toggles capture, sources, columns', async () => {
   let r = await call('GET');
   assert.equal(r.body.prefs.capture, true);

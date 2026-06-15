@@ -396,6 +396,8 @@ body {
 .toast-action { margin-left: 8px; background: none; border: 1px solid var(--accent); color: inherit; font: inherit; font-size: 11px; border-radius: 99px; padding: 1px 9px; cursor: pointer; }
 .trash-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
 .trash-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* inline rename (item title / group name) */
+.item .t[contenteditable="true"], .group .g-n[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: #0c0c10; white-space: normal; overflow: visible; cursor: text; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

@@ -49,7 +49,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
     const prev = items.find((it) => it.sessionId === sid);
     if (prev) {
       prev.bodyUrl = await putBody(uid, prev.id, text);
-      prev.title = t;
+      if (!prev.titlePinned) prev.title = t; // a manual rename sticks across re-syncs
       prev.words = w;
       if (g) prev.group = g;
       Object.assign(prev, bookFields);

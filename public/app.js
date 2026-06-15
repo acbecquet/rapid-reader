@@ -119,7 +119,7 @@ let agentHealCount = 0;
 async function healAgentTitles() {
   if (agentHealCount >= 30) return;
   const idle = Date.now() - 120000;
-  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.titlePinned && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
   let changed = false;
   for (const it of cand.slice(0, 4)) {
     agentHealed.add(it.id); agentHealCount++;
@@ -439,7 +439,12 @@ function renderColBody(body, col, list) {
     const collapsed = collapsedGroups.has(gkey);
     const gh = document.createElement('div');
     gh.className = 'group' + (collapsed ? ' collapsed' : '');
-    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>`;
+    const caret = document.createElement('span'); caret.className = 'caret'; caret.textContent = '▾';
+    const gn = document.createElement('span'); gn.className = 'g-n';
+    gn.textContent = (prefs.groupAliases && prefs.groupAliases[name]) || name;
+    gn.title = 'Double-click to rename';
+    gn.ondblclick = (e) => { e.stopPropagation(); editGroupAlias(gn, name); };
+    gh.append(caret, gn);
     if (bm?.bookmarkAt) {
       // one-click resume — open the bookmarked chapter at its saved spot, even
       // when the book is collapsed and you've been away for days
@@ -497,14 +502,76 @@ function itemRow(it, colId, colItems, isBookmark) {
     toast('Deleted', { label: 'Undo', fn: () => undelete(gone) });
   };
   row.append(del);
-  row.onclick = (e) => {
+  const activate = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
     if (selected.size) { clearSelection(); }
     lastClick[colId] = it.id;
     cur?.item.id === it.id ? closeReader() : openItem(it, { start: settings.autoplay });
   };
+  row.onclick = activate;
+  // double-click the title to rename; single-click still opens (debounced so the
+  // gestures don't fight). A manual rename pins the title against auto-titling.
+  let tTimer;
+  t.onclick = (e) => {
+    if (t.isContentEditable) return;
+    e.stopPropagation();
+    if (e.detail > 1) return;
+    clearTimeout(tTimer);
+    tTimer = setTimeout(() => activate(e), 200);
+  };
+  t.ondblclick = (e) => { e.stopPropagation(); clearTimeout(tTimer); editItemTitle(t, it); };
   return row;
+}
+
+// Inline-edit a backlog item's title; Enter saves + pins it, Esc/empty reverts.
+function editItemTitle(span, it) {
+  span.contentEditable = 'true';
+  span.textContent = it.title;
+  span.focus();
+  const sel = getSelection(); const r = document.createRange();
+  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    span.contentEditable = 'false';
+    const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (save && val && val !== it.title) {
+      it.title = val; it.titlePinned = true;
+      api('PATCH', 'items', { body: { id: it.id, title: val, titlePinned: true } }).catch(() => {});
+    }
+    lastRender = ''; renderColumns();
+  };
+  span.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  span.onblur = () => finish(true);
+}
+
+// Inline-edit a subgroup's display name → a per-user alias (the real group is
+// kept, so new items joining inherit the alias and live updates survive).
+function editGroupAlias(span, realGroup) {
+  span.contentEditable = 'true';
+  span.focus();
+  const sel = getSelection(); const r = document.createRange();
+  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    span.contentEditable = 'false';
+    const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (save && val) {
+      prefs.groupAliases = { ...(prefs.groupAliases || {}), [realGroup]: val };
+      api('PATCH', 'prefs', { body: { groupAliases: prefs.groupAliases } }).then((res) => { if (res?.prefs) prefs = res.prefs; }).catch(() => {});
+    }
+    lastRender = ''; renderColumns();
+  };
+  span.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  span.onblur = () => finish(true);
 }
 
 // ---------- multiselect (ctrl/cmd-click toggle, shift-click range) ----------

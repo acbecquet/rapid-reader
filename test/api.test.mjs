@@ -77,6 +77,16 @@ test('soft-delete: recoverable via trash + restore; hard erases', async () => {
   assert.equal(r.body.items.find((i) => i.id === id), undefined);
 });
 
+test('sessionId upsert preserves a pinned title', async () => {
+  let r = await call('POST', { body: { text: 'first version of the work here', sourceType: 'claude_code', sessionId: 'pin-1', title: 'auto title one' } });
+  const id = r.body.item.id;
+  await call('PATCH', { body: { id, title: 'My Renamed Session', titlePinned: true } });
+  r = await call('POST', { body: { text: 'first version of the work here, now longer', sourceType: 'claude_code', sessionId: 'pin-1', title: 'auto title two' } });
+  assert.equal(r.body.item.id, id);                       // upserted in place
+  assert.equal(r.body.item.title, 'My Renamed Session');  // pinned title survived
+  await call('DELETE', { query: { id }, body: { hard: true } });
+});
+
 test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
   let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
   assert.equal(r.body.item.sourceType, 'codex');
