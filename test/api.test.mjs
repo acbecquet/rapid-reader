@@ -57,6 +57,26 @@ test('items CRUD: lean stubs in the index, body loaded on demand', async () => {
   assert.deepEqual(r.body.items, []);
 });
 
+test('soft-delete: recoverable via trash + restore; hard erases', async () => {
+  let r = await call('POST', { body: { text: 'a passage to delete and recover later', sourceType: 'manual' } });
+  const id = r.body.item.id;
+
+  await call('DELETE', { query: { id } });                          // soft
+  r = await call('GET');
+  assert.equal(r.body.items.find((i) => i.id === id), undefined);   // hidden from the poll
+  r = await call('GET', { query: { trash: '1' } });
+  const t = r.body.items.find((i) => i.id === id);
+  assert.ok(t && t.deletedAt);                                       // present in Trash
+
+  await call('PATCH', { body: { id, deletedAt: null } });           // restore
+  r = await call('GET');
+  assert.ok(r.body.items.find((i) => i.id === id));
+
+  await call('DELETE', { query: { id }, body: { hard: true } });    // erase
+  r = await call('GET', { query: { trash: '1' } });
+  assert.equal(r.body.items.find((i) => i.id === id), undefined);
+});
+
 test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
   let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
   assert.equal(r.body.item.sourceType, 'codex');

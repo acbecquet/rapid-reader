@@ -389,6 +389,13 @@ body {
 .role-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 11px; flex-wrap: wrap; }
 .role-row b { text-transform: capitalize; min-width: 52px; }
 .role-row input.num { width: 90px; }
+/* per-item delete ✕ (row is already position:relative) + Undo toast + Trash */
+.item-del { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--dim); font-size: 11px; cursor: pointer; opacity: 0; padding: 2px 4px; }
+.item:hover .item-del { opacity: .6; }
+.item-del:hover { opacity: 1; color: var(--accent); }
+.toast-action { margin-left: 8px; background: none; border: 1px solid var(--accent); color: inherit; font: inherit; font-size: 11px; border-radius: 99px; padding: 1px 9px; cursor: pointer; }
+.trash-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.trash-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

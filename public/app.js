@@ -483,6 +483,20 @@ function itemRow(it, colId, colItems, isBookmark) {
     ago.textContent = relTime(it.createdAt);
     row.append(ago);
   }
+  const del = document.createElement('button');
+  del.className = 'item-del';
+  del.title = 'Delete (recoverable)';
+  del.textContent = '✕';
+  del.onclick = (e) => {
+    e.stopPropagation();
+    const gone = [it];
+    items = items.filter((x) => x.id !== it.id);
+    if (cur?.item.id === it.id) closeReader();
+    api('DELETE', 'items', { body: { id: it.id } }).catch(() => {}); // soft (recoverable)
+    lastRender = ''; renderColumns();
+    toast('Deleted', { label: 'Undo', fn: () => undelete(gone) });
+  };
+  row.append(del);
   row.onclick = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
@@ -534,10 +548,13 @@ function renderSelbar() {
   act('Archive', () => bulk((it) => { it.archivedAt = Date.now(); }, { archivedAt: Date.now() }));
   act('Delete', () => {
     const ids = [...selected];
+    const gone = items.filter((x) => selected.has(x.id));
     items = items.filter((x) => !selected.has(x.id));
     if (cur && selected.has(cur.item.id)) closeReader();
     clearSelection();
-    api('DELETE', 'items', { body: { ids } }).catch(() => {});
+    api('DELETE', 'items', { body: { ids } }).catch(() => {}); // soft (recoverable)
+    lastRender = ''; renderColumns();
+    toast(`Deleted ${ids.length} item${ids.length === 1 ? '' : 's'}`, { label: 'Undo', fn: () => undelete(gone) });
   });
   act('Clear', clearSelection);
 }
@@ -547,6 +564,16 @@ function bulk(mutate, patch) {
   for (const it of items) if (selected.has(it.id)) mutate(it);
   clearSelection();
   for (const id of ids) api('PATCH', 'items', { body: { id, ...patch } }).catch(() => {});
+}
+
+// Bring soft-deleted items back: re-show locally + clear deletedAt server-side.
+function undelete(arr) {
+  for (const it of arr) {
+    it.deletedAt = null;
+    if (!items.find((x) => x.id === it.id)) items.push(it);
+    api('PATCH', 'items', { body: { id: it.id, deletedAt: null } }).catch(() => {});
+  }
+  lastRender = ''; renderColumns();
 }
 
 // ---------- column customization ----------
@@ -1461,7 +1488,7 @@ setInterval(() => {
 // The desktop-leaning header tools don't fit a phone bar, so on narrow screens
 // we relocate them into a dropdown (kept inline on desktop). Capture each tool's
 // home slot now, before any move, so we can put them back when the window widens.
-const MORE_IDS = ['mcp-init', 'mcp-status', 'status', 'info-btn', 'capture-btn', 'epub-btn', 'sources', 'stats-btn', 'cols-btn'];
+const MORE_IDS = ['mcp-init', 'mcp-status', 'status', 'info-btn', 'capture-btn', 'epub-btn', 'sources', 'stats-btn', 'cols-btn', 'trash-btn'];
 const moreEls = MORE_IDS.map((id) => $(id)).filter(Boolean);
 const moreHome = new Map(moreEls.map((el) => [el, [el.parentElement, el.nextElementSibling]]));
 function layoutTools() {
@@ -1482,6 +1509,37 @@ $('more-menu').onclick = (e) => e.stopPropagation(); // keep open while using th
 document.addEventListener('click', () => $('more-menu').classList.remove('open'));
 addEventListener('resize', layoutTools);
 layoutTools();
+
+// ---------- Recently deleted (Trash) ----------
+$('trash-btn').onclick = openTrash;
+$('trash-close').onclick = () => { $('trash').hidden = true; };
+$('trash').onclick = (e) => { if (e.target === $('trash')) $('trash').hidden = true; };
+async function openTrash() {
+  $('trash').hidden = false;
+  const list = $('trash-list');
+  list.textContent = 'Loading…';
+  let deleted = [];
+  try { ({ items: deleted } = await api('GET', 'items', { query: { trash: 1 } })); } catch {}
+  list.textContent = '';
+  if (!deleted.length) { list.innerHTML = '<p class="hint">Nothing deleted recently.</p>'; return; }
+  for (const it of deleted) {
+    const row = document.createElement('div');
+    row.className = 'trash-row';
+    const t = document.createElement('span');
+    t.className = 'trash-t';
+    t.textContent = it.title || '(untitled)';
+    const restore = document.createElement('button');
+    restore.className = 'chip';
+    restore.textContent = 'Restore';
+    restore.onclick = () => { api('PATCH', 'items', { body: { id: it.id, deletedAt: null } }).catch(() => {}); row.remove(); refresh(); };
+    const erase = document.createElement('button');
+    erase.className = 'chip';
+    erase.textContent = 'Erase';
+    erase.onclick = () => { api('DELETE', 'items', { query: { id: it.id, hard: 1 } }).catch(() => {}); row.remove(); };
+    row.append(t, restore, erase);
+    list.append(row);
+  }
+}
 
 // ---------- add text / URL (paste only — sources have their own toggles) ----------
 $('add-btn').onclick = () => { $('add').hidden = false; $('add-text').focus(); };
@@ -1676,11 +1734,20 @@ function updateMcp() {
 
 // ---------- toast ----------
 let toastTimer;
-function toast(msg) {
-  $('toast').textContent = msg;
-  $('toast').hidden = false;
+// `action` = { label, fn }: shows a clickable button (e.g. Undo) + a longer hold.
+function toast(msg, action) {
+  const el = $('toast');
+  el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.onclick = () => { el.hidden = true; clearTimeout(toastTimer); action.fn(); };
+    el.append(' ', b);
+  }
+  el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, action ? 7000 : 2200);
 }
 
 // ---------- Google sign-in (optional — token entry still works without it) ----------

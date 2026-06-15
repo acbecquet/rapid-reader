@@ -61,7 +61,20 @@ export default async function handler(req, res) {
     const [items, live, prefs] = await getDocs(
       [KEY_U, keyFor('rr:live', uid), keyFor('rr:prefs', uid)], [[], null, null]
     );
-    return res.status(200).json({ items, live, prefs: publicPrefs(mergePrefs(prefs), uid) });
+    // Recently-deleted view: only soft-deleted items, newest-deleted first
+    if (req.query?.trash) {
+      const trash = items.filter((it) => it.deletedAt).sort((a, b) => b.deletedAt - a.deletedAt);
+      return res.status(200).json({ items: trash, live: null, prefs: publicPrefs(mergePrefs(prefs), uid) });
+    }
+    // lazy purge: erase soft-deleted items past the 30-day recovery window
+    const cutoff = Date.now() - 30 * 86400000;
+    const expired = items.filter((it) => it.deletedAt && it.deletedAt < cutoff);
+    if (expired.length) {
+      for (const it of expired) await delBody(uid, it.id, it.bodyUrl);
+      await setDoc(KEY_U, items.filter((it) => !expired.includes(it)));
+    }
+    const visible = items.filter((it) => !it.deletedAt);
+    return res.status(200).json({ items: visible, live, prefs: publicPrefs(mergePrefs(prefs), uid) });
   }
 
   const items = await getDoc(KEY_U, []);
@@ -110,6 +123,7 @@ export default async function handler(req, res) {
     if ('progress' in body) item.progress = Math.max(0, Number(body.progress) || 0);
     if ('archivedAt' in body) item.archivedAt = body.archivedAt;
     if ('bookmarkAt' in body) item.bookmarkAt = body.bookmarkAt; // current book chapter
+    if ('deletedAt' in body) item.deletedAt = body.deletedAt; // soft-delete / restore (null)
     await setDoc(KEY_U, items);
     return res.status(200).json({ item });
   }
@@ -117,6 +131,13 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const ids = body.ids || [body.id || req.query?.id].filter(Boolean);
     if (!ids.length) return res.status(400).json({ error: 'id required' });
+    // soft by default (recoverable from Trash); hard erase only on explicit ask
+    if (!(req.query?.hard || body.hard)) {
+      const now = Date.now();
+      for (const it of items) if (ids.includes(it.id)) it.deletedAt = now;
+      await setDoc(KEY_U, items);
+      return res.status(200).json({ ok: true, deletedAt: now });
+    }
     const gone = items.filter((it) => ids.includes(it.id));
     await setDoc(KEY_U, items.filter((it) => !ids.includes(it.id)));
     for (const it of gone) await delBody(uid, it.id, it.bodyUrl);
