@@ -115,20 +115,20 @@ test('isBackground filters sub-agents, observers, and observer cwds — keeps re
   assert.equal(isBackground(observerCwd), true);
 });
 
-test('buildPayload drops background sessions and titles from the summary', () => {
+test('buildPayload drops background sessions; title is your most recent prompt', () => {
   const sidechain = jl([
     { type: 'user', isSidechain: true, message: { role: 'user', content: 'review this' } },
     { type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'done with the review of everything' }] } },
   ]);
   assert.equal(buildPayload({ jsonl: sidechain, sessionId: 'claude:x' }), null);
 
-  const withSummary = jl([
+  const session = jl([
     { type: 'summary', summary: 'ER2 vehicle crew control fix' },
     { type: 'user', userType: 'external', message: { role: 'user', content: 'the crew controller crashes on spawn, please investigate and fix it' } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Found a null deref; patched and tested.' }] } },
   ]);
-  const p = buildPayload({ jsonl: withSummary, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
-  assert.equal(p.title, 'ER2 vehicle crew control fix'); // sidebar-style title from the summary
+  const p = buildPayload({ jsonl: session, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
+  assert.equal(p.title, 'the crew controller crashes on spawn, please investigate and fix it'); // your prompt, not the summary
 });
 
 test('Codex env-context block is skipped for the title; cwd parsed from it', () => {

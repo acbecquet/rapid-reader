@@ -40,11 +40,11 @@ test('compileTranscript keeps long transcripts whole, trimming only past the ~1M
   assert.ok(md.includes('TURN29'));  // newest kept
 });
 
-test('buildPayload: title from first prompt, group from project folder', () => {
+test('buildPayload: title is your most recent prompt, group from project folder', () => {
   const p = buildPayload({ session_id: 'abc-123', cwd: '/home/u/projects/rapid-reader' }, TRANSCRIPT);
   assert.equal(p.sessionId, 'claude:abc-123');
   assert.equal(p.sourceType, 'claude_code');
-  assert.ok(p.title.startsWith('Fix the login bug')); // session title = its first prompt
+  assert.ok(p.title.startsWith('great, now update the docs')); // your latest prompt, not the first
   assert.equal(p.group, 'rapid-reader'); // grouped by project, like the sidebar
   assert.equal(buildPayload({ session_id: 'x', cwd: '/a' }, jl([
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } },

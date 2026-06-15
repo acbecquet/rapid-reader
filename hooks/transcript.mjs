@@ -130,11 +130,22 @@ export function blocksOf(entry) {
   return blocks.length ? { role, blocks } : null;
 }
 
-// JSONL → { md, firstPrompt }. Each turn opens with a [[rr:role]] sentinel line;
-// content follows verbatim. Injected context dropped. No mid-turn truncation.
+// A user line that isn't a real prompt (slash-command / markup / handoff / trim
+// junk) — so it never becomes the title. Mirrors the reader's deriveTitle filter.
+function isJunkPrompt(s) {
+  return !s || s.length < 2
+    || /^[<{[(]/.test(s)
+    || /^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(s)
+    || /^[@"']*[A-Za-z]:[\\/]/.test(s)
+    || /^[#*\-–—.·•\s>]+$/.test(s)
+    || /environment_context|command-(name|message|args)|AGENTS\.md|system-reminder|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(s);
+}
+
+// JSONL → { md, firstPrompt, lastPrompt }. Each turn opens with a [[rr:role]]
+// sentinel; content follows verbatim. Injected context dropped. No mid-turn cut.
 export function compileTranscript(jsonl) {
   const out = [];
-  let firstPrompt = '';
+  let firstPrompt = '', lastPrompt = '';
   for (const line of jsonl.split('\n')) {
     let entry; try { entry = JSON.parse(line); } catch { continue; }
     const t = blocksOf(entry);
@@ -143,7 +154,8 @@ export function compileTranscript(jsonl) {
       if (b.kind === 'text') {
         if (t.role === 'user') {
           if (INJECTED.test(b.text)) continue;
-          if (!firstPrompt) firstPrompt = b.text.replace(/\s+/g, ' ').trim();
+          const flat = b.text.replace(/\s+/g, ' ').trim();
+          if (!isJunkPrompt(flat)) { if (!firstPrompt) firstPrompt = flat; lastPrompt = flat; }
           out.push('[[rr:you]]\n' + b.text);
         } else {
           out.push('[[rr:claude]]\n' + b.text);
@@ -164,7 +176,7 @@ export function compileTranscript(jsonl) {
     while (turns.length > 1 && turns.join('\n\n').length > TEXT_CAP) turns.shift();
     md = '(earlier turns trimmed)\n\n' + turns.join('\n\n');
   }
-  return { md, firstPrompt };
+  return { md, firstPrompt, lastPrompt };
 }
 
 // Build the /api/items payload, or null for thin/background sessions. `title`
@@ -172,13 +184,11 @@ export function compileTranscript(jsonl) {
 // quick title is the session summary || first prompt (instant, no LLM).
 export function buildPayload({ jsonl, sessionId, group, sourceType, title }) {
   if (isBackground(jsonl)) return null;
-  const { md, firstPrompt } = compileTranscript(jsonl);
+  const { md, firstPrompt, lastPrompt } = compileTranscript(jsonl);
   if (md.replace(/\[\[rr:[^\]]*\]\]/g, '').split(/\s+/).filter(Boolean).length < 8) return null;
-  let quick = title;
-  if (!quick) {
-    const base = (sessionSummary(jsonl) || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
-    const words = base.split(' ');
-    quick = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
-  }
+  // Title = your most recent prompt (strictly your words — no summary, no LLM).
+  const base = (title || lastPrompt || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
+  const words = base.split(' ');
+  const quick = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
   return { sessionId, text: md, title: quick, group: group || 'sessions', sourceType: sourceType || 'claude_code' };
 }
