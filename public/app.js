@@ -111,26 +111,27 @@ async function healTitle(item) {
   } catch { /* logged already; leave the heuristic title */ }
 }
 
-// Clean gibberish agent titles (slash-command / markup leaks from older
-// captures) by re-deriving from the body — a few per poll, capped per session,
-// no LLM. The backlog self-heals; a re-sync cleans them in bulk.
+// Title every agent item with the user's most recent prompt (deriveTitle),
+// re-derived from the body — a few per poll, capped. Only IDLE sessions (no
+// sync in ~2 min) so we never fight an actively-syncing session's own title.
 const agentHealed = new Set();
 let agentHealCount = 0;
 async function healAgentTitles() {
-  if (agentHealCount >= 20) return;
-  const bad = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && looksBadTitle(it.title) && !agentHealed.has(it.id));
+  if (agentHealCount >= 30) return;
+  const idle = Date.now() - 120000;
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
   let changed = false;
-  for (const it of bad.slice(0, 3)) {
+  for (const it of cand.slice(0, 4)) {
     agentHealed.add(it.id); agentHealCount++;
     try {
       const { text } = await api('GET', 'items', { query: { id: it.id } });
       const title = P.deriveTitle(text);
-      if (title && !looksBadTitle(title)) {
+      if (title && title !== it.title) {
         await api('PATCH', 'items', { body: { id: it.id, title } });
         it.title = title;
         changed = true;
       }
-    } catch { /* leave it; a different item next poll */ }
+    } catch { /* try a different item next poll */ }
   }
   if (changed) { lastRender = ''; renderColumns(); }
 }

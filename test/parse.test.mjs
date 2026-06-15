@@ -127,8 +127,14 @@ test('deriveTitle skips command/markup turns, picks the first real human line', 
   assert.equal(deriveTitle('```\n```'), ''); // nothing usable
 });
 
-test('deriveTitle skips handoff/markdown/trim/path preamble (the real backlog junk)', () => {
+test('deriveTitle picks your MOST RECENT prompt, not the first', () => {
+  const body = '[[rr:you]]\nset up the project\n\n[[rr:claude]]\nok\n\n[[rr:you]]\nnow add the scoreboard overlay';
+  assert.equal(deriveTitle(body), 'now add the scoreboard overlay');
+});
+
+test('deriveTitle skips handoff/markdown/trim/path junk and Claude prose', () => {
   assert.equal(deriveTitle('# Resume work from a handoff document\nYou are tasked\n\n> add a dogfight scoring mode'), 'add a dogfight scoring mode');
   assert.equal(deriveTitle('(earlier conversation trimmed)\n\n> wire up the squad join flow'), 'wire up the squad join flow');
-  assert.equal(deriveTitle('[[rr:you]]\n**NEVER gate on IsAI()**\n\n[[rr:you]]\nclamp the crew index to the roster size'), 'clamp the crew index to the roster size');
+  // no real prompt from you (only Claude prose) → empty, never titled with Claude's words
+  assert.equal(deriveTitle('[[rr:claude]]\nI\'ll start by looking at the script.'), '');
 });
