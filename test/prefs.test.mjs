@@ -32,6 +32,34 @@ test('mergePrefs fills missing fields over stored partials', () => {
   assert.equal(m.columns.length, DEFAULT_COLUMNS.length);
 });
 
+test('defaultPrefs ships transcript role theming; merge fills gaps', () => {
+  const d = defaultPrefs();
+  assert.equal(d.transcript.roles.you.align, 'right');
+  assert.equal(d.transcript.roles.you.box, true);
+  assert.equal(d.transcript.roles.tool.collapsed, true);
+  const m = mergePrefs({ transcript: { roles: { claude: { color: '#abc' } } } });
+  assert.equal(m.transcript.roles.claude.color, '#abc'); // override kept
+  assert.equal(m.transcript.roles.you.label, 'You');     // default preserved
+});
+
+test('groupAliases: default empty, stored merged through', () => {
+  assert.deepEqual(defaultPrefs().groupAliases, {});
+  const m = mergePrefs({ groupAliases: { 'er2-mod': 'ER2 Mod' } });
+  assert.equal(m.groupAliases['er2-mod'], 'ER2 Mod');
+});
+
+test('PATCH groupAliases stores trimmed names, drops empties', async () => {
+  const r = await call('PATCH', { groupAliases: { proj: '  My Project  ', blank: '' } });
+  assert.equal(r.body.prefs.groupAliases.proj, 'My Project');
+  assert.equal('blank' in r.body.prefs.groupAliases, false);
+});
+
+test('PATCH columns keeps per-column color + density', async () => {
+  const r = await call('PATCH', { columns: [{ id: 'x', name: 'X', icon: 'general', sources: ['manual'], color: '#123456', density: 'compact' }] });
+  assert.equal(r.body.prefs.columns[0].color, '#123456');
+  assert.equal(r.body.prefs.columns[0].density, 'compact');
+});
+
 test('GET returns merged prefs; PATCH toggles capture, sources, columns', async () => {
   let r = await call('GET');
   assert.equal(r.body.prefs.capture, true);

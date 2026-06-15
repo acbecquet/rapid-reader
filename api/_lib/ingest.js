@@ -21,7 +21,7 @@ export function quickTitle(text) {
 // Add (or session-upsert) one item. Returns { item } or { ignored:true } when
 // the source's header toggle is off. `gated:false` skips the toggle (the
 // owner pasting by hand should never be dropped by a source switch).
-export async function addItem(uid, { text, sourceType, title = '', url = '', words, sessionId, group = '', bookId, chapterIndex, ts } = {}, { gated = true } = {}) {
+export async function addItem(uid, { text, sourceType, title = '', url = '', words, sessionId, group = '', bookId, chapterIndex, ts, preview } = {}, { gated = true } = {}) {
   text = String(text || '').trim();
   if (!text) throw new Error('text required');
   sourceType = SOURCE_TYPES.includes(sourceType) ? sourceType : 'other';
@@ -49,8 +49,9 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
     const prev = items.find((it) => it.sessionId === sid);
     if (prev) {
       prev.bodyUrl = await putBody(uid, prev.id, text);
-      prev.title = t;
+      if (!prev.titlePinned) prev.title = t; // a manual rename sticks across re-syncs
       prev.words = w;
+      if (preview) prev.preview = String(preview).slice(0, 200); // latest-turn line
       if (g) prev.group = g;
       Object.assign(prev, bookFields);
       prev.createdAt = when; // bump recency so live updates sort to the top
@@ -66,6 +67,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
     id, title: t, sourceType, url, source,
     createdAt: when, readAt: null, progress: 0, archivedAt: null,
     words: w, bodyUrl, ...(g ? { group: g } : {}), ...bookFields, ...(sid ? { sessionId: sid } : {}),
+    ...(preview ? { preview: String(preview).slice(0, 200) } : {}),
   };
   await setDoc(KEY_U, [item, ...items].slice(0, CAP));
   return { item };

@@ -374,6 +374,46 @@ body {
   margin-bottom: 2px;
 }
 #transcript p.quote { border-left: 2px solid var(--line); padding-left: 10px; font-style: italic; }
+/* role-attributed agent turns (you / claude / tool / think) */
+#transcript .turn { margin: 0 0 14px; }
+#transcript .turn-label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .08em; opacity: .55; margin-bottom: 3px; }
+#transcript .turn.boxed { background: color-mix(in srgb, var(--accent) 10%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; width: fit-content; max-width: 88%; }
+#transcript .turn.boxed.a-right { margin-left: auto; }
+#transcript .turn.boxed.a-center { margin-left: auto; margin-right: auto; }
+#transcript .turn.claude { color: var(--reader-fg); }
+#transcript .turn.tool, #transcript .turn.think { opacity: .7; }
+#transcript .turn details > summary { cursor: pointer; color: var(--dim); font-size: 12px; list-style: none; }
+#transcript .turn details > summary::-webkit-details-marker { display: none; }
+#transcript .turn details[open] > summary { color: var(--reader-fg); }
+#transcript .turn details pre { margin: 6px 0 0; }
+.role-row { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 11px; flex-wrap: wrap; }
+.role-row b { text-transform: capitalize; min-width: 52px; }
+.role-row input.num { width: 90px; }
+/* per-item delete ✕ (row is already position:relative) + Undo toast + Trash */
+.item-del { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; color: var(--dim); font-size: 11px; cursor: pointer; opacity: 0; padding: 2px 4px; }
+.item:hover .item-del { opacity: .6; }
+.item-del:hover { opacity: 1; color: var(--accent); }
+.toast-action { margin-left: 8px; background: none; border: 1px solid var(--accent); color: inherit; font: inherit; font-size: 11px; border-radius: 99px; padding: 1px 9px; cursor: pointer; }
+.trash-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.trash-t { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* inline rename (item title / group name) */
+.item .t[contenteditable="true"], .group .g-n[contenteditable="true"] { outline: 1px solid var(--accent); border-radius: 3px; padding: 0 3px; background: #0c0c10; white-space: normal; overflow: visible; cursor: text; }
+/* drag-to-reorder */
+.item.dragging { opacity: .4; }
+.item.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
+.col-reset { background: none; border: 0; color: var(--dim); cursor: pointer; font-size: 11px; padding: 0 2px; }
+.col-reset:hover { color: var(--accent); }
+/* per-column theming (accent colour + density) */
+.col { --col-accent: var(--accent); }
+.col .col-h .col-i { color: var(--col-accent); }
+.col .item.active { border-left-color: var(--col-accent); }
+.col .item.unread .t::before { background: var(--col-accent); }
+.col.compact .item { padding: 3px 9px; }
+.col.compact .col-body { font-size: 10px; }
+.colcfg-color { width: 30px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 4px; background: none; cursor: pointer; vertical-align: middle; }
+/* live preview line ("where we are now") under an agent item's title */
+.item { flex-wrap: wrap; }
+.item-pv { flex-basis: 100%; min-width: 0; font-size: 9.5px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 1px 0 0; padding-left: 11px; }
 #link-url {
   margin: 4px 0 10px;
   font-size: 11px;

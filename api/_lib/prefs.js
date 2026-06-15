@@ -16,11 +16,31 @@ export const DEFAULT_COLUMNS = [
   { id: 'email', name: 'Email', icon: 'email', sources: ['email'] },
 ];
 
+// Per-role transcript appearance (agent chats): how your turns, Claude's, tool
+// calls, and thinking are labelled, aligned, coloured, boxed, or hidden.
+export function defaultTranscript() {
+  return { roles: {
+    you:    { label: 'You',      align: 'right', color: '', box: true,  show: true },
+    claude: { label: 'Claude',   align: 'left', color: '', box: false, show: true },
+    tool:   { label: 'tool',     align: 'left', color: '', show: true, collapsed: true },
+    think:  { label: 'thinking', align: 'left', color: '', show: true, collapsed: true },
+  } };
+}
+
+function mergeTranscript(stored) {
+  const d = defaultTranscript();
+  if (!stored || !stored.roles) return d;
+  for (const r of Object.keys(d.roles)) d.roles[r] = { ...d.roles[r], ...(stored.roles[r] || {}) };
+  return d;
+}
+
 export function defaultPrefs() {
   return {
     capture: true,
     sources: Object.fromEntries(SOURCES.map((s) => [s, true])),
     columns: DEFAULT_COLUMNS,
+    transcript: defaultTranscript(),
+    groupAliases: {}, // subgroup display-name overrides (real group kept)
     geminiKey: '', // this user's own free Gemini key (bring-your-own quota)
   };
 }
@@ -35,6 +55,8 @@ export function mergePrefs(stored) {
     capture: stored.capture !== false,
     sources: { ...d.sources, ...(stored.sources || {}) },
     columns: Array.isArray(stored.columns) && stored.columns.length ? stored.columns : d.columns,
+    transcript: mergeTranscript(stored.transcript),
+    groupAliases: (stored.groupAliases && typeof stored.groupAliases === 'object') ? stored.groupAliases : {},
     geminiKey: typeof stored.geminiKey === 'string' ? stored.geminiKey : '',
   };
 }

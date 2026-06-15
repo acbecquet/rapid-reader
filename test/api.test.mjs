@@ -57,6 +57,46 @@ test('items CRUD: lean stubs in the index, body loaded on demand', async () => {
   assert.deepEqual(r.body.items, []);
 });
 
+test('soft-delete: recoverable via trash + restore; hard erases', async () => {
+  let r = await call('POST', { body: { text: 'a passage to delete and recover later', sourceType: 'manual' } });
+  const id = r.body.item.id;
+
+  await call('DELETE', { query: { id } });                          // soft
+  r = await call('GET');
+  assert.equal(r.body.items.find((i) => i.id === id), undefined);   // hidden from the poll
+  r = await call('GET', { query: { trash: '1' } });
+  const t = r.body.items.find((i) => i.id === id);
+  assert.ok(t && t.deletedAt);                                       // present in Trash
+
+  await call('PATCH', { body: { id, deletedAt: null } });           // restore
+  r = await call('GET');
+  assert.ok(r.body.items.find((i) => i.id === id));
+
+  await call('DELETE', { query: { id }, body: { hard: true } });    // erase
+  r = await call('GET', { query: { trash: '1' } });
+  assert.equal(r.body.items.find((i) => i.id === id), undefined);
+});
+
+test('sessionId upsert preserves a pinned title', async () => {
+  let r = await call('POST', { body: { text: 'first version of the work here', sourceType: 'claude_code', sessionId: 'pin-1', title: 'auto title one' } });
+  const id = r.body.item.id;
+  await call('PATCH', { body: { id, title: 'My Renamed Session', titlePinned: true } });
+  r = await call('POST', { body: { text: 'first version of the work here, now longer', sourceType: 'claude_code', sessionId: 'pin-1', title: 'auto title two' } });
+  assert.equal(r.body.item.id, id);                       // upserted in place
+  assert.equal(r.body.item.title, 'My Renamed Session');  // pinned title survived
+  await call('DELETE', { query: { id }, body: { hard: true } });
+});
+
+test('PATCH order persists and clears (manual column pinning)', async () => {
+  let r = await call('POST', { body: { text: 'an item to position by hand', sourceType: 'manual' } });
+  const id = r.body.item.id;
+  r = await call('PATCH', { body: { id, order: 3 } });
+  assert.equal(r.body.item.order, 3);
+  r = await call('PATCH', { body: { id, order: null } });
+  assert.equal('order' in r.body.item, false);
+  await call('DELETE', { query: { id }, body: { hard: true } });
+});
+
 test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
   let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
   assert.equal(r.body.item.sourceType, 'codex');

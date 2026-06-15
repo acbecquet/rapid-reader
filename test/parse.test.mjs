@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStructure, readingTokens, isCodeHeavy } from '../public/parse.js';
+import { parseStructure, readingTokens, isCodeHeavy, deriveTitle, derivePreview } from '../public/parse.js';
 
 const SAMPLE = `# Change Summary
 
@@ -85,4 +85,61 @@ test('isCodeHeavy detects diffs and code dumps, not prose', () => {
   assert.equal(isCodeHeavy(dump), true);
   assert.equal(isCodeHeavy(SAMPLE), false);
   assert.equal(isCodeHeavy('Plain explanation of the work that was done across several sentences and lines.\nMore prose.\nEven more.\nAnd more.'), false);
+});
+
+const CHAT = `[[rr:you]]
+fix the crash
+
+[[rr:claude]]
+Done. Here's the fix.
+
+[[rr:tool Bash]]
+git commit -am fix
+
+[[rr:think]]
+considering edge cases`;
+
+test('parseStructure stamps role from [[rr:…]] sentinels', () => {
+  const s = parseStructure(CHAT);
+  assert.deepEqual(s.map((x) => x.role), ['you', 'claude', 'tool', 'think']);
+  assert.equal(s[0].text, 'fix the crash');
+  assert.equal(s[1].text, "Done. Here's the fix.");
+});
+
+test('readingTokens excludes tool and think turns from the RSVP stream', () => {
+  const t = readingTokens(parseStructure(CHAT));
+  const secs = new Set(t.map((x) => x.sec));
+  assert.ok(secs.has(0) && secs.has(1));   // you + claude are read
+  assert.ok(!secs.has(2) && !secs.has(3)); // tool + think are not
+});
+
+test('bodies without sentinels keep role null (legacy unchanged)', () => {
+  const s = parseStructure('Just prose.\n\n> a quote');
+  assert.deepEqual(s.map((x) => x.role), [null, null]);
+});
+
+test('deriveTitle skips command/markup turns, picks the first real human line', () => {
+  const body = '[[rr:you]]\n<command-message>resume_handoff</command-message>\n\n[[rr:you]]\nFix the crash in the crew controller and add a test\n\n[[rr:claude]]\nDone.';
+  assert.equal(deriveTitle(body), 'Fix the crash in the crew controller and add a…');
+  // legacy '>'-quote body with a leaked command first
+  const legacy = '> <command-name>/resume_handoff</command-name>\n\n> please refactor the auth module\n\nSure.';
+  assert.equal(deriveTitle(legacy), 'please refactor the auth module');
+  assert.equal(deriveTitle('```\n```'), ''); // nothing usable
+});
+
+test('deriveTitle picks your MOST RECENT prompt, not the first', () => {
+  const body = '[[rr:you]]\nset up the project\n\n[[rr:claude]]\nok\n\n[[rr:you]]\nnow add the scoreboard overlay';
+  assert.equal(deriveTitle(body), 'now add the scoreboard overlay');
+});
+
+test('derivePreview takes Claude\'s latest turn', () => {
+  const body = '[[rr:you]]\ndo X\n\n[[rr:claude]]\nfirst reply\n\n[[rr:you]]\ndo Y\n\n[[rr:claude]]\nsecond reply with the result';
+  assert.equal(derivePreview(body), 'second reply with the result');
+});
+
+test('deriveTitle skips handoff/markdown/trim/path junk and Claude prose', () => {
+  assert.equal(deriveTitle('# Resume work from a handoff document\nYou are tasked\n\n> add a dogfight scoring mode'), 'add a dogfight scoring mode');
+  assert.equal(deriveTitle('(earlier conversation trimmed)\n\n> wire up the squad join flow'), 'wire up the squad join flow');
+  // no real prompt from you (only Claude prose) → empty, never titled with Claude's words
+  assert.equal(deriveTitle('[[rr:claude]]\nI\'ll start by looking at the script.'), '');
 });

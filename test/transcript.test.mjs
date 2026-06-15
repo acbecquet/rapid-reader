@@ -36,9 +36,36 @@ test('compileTranscript renders a faithful, readable conversation', () => {
     { type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'Added the join flow and a test.' }] } },
   ]);
   const { md, firstPrompt } = compileTranscript(codex);
-  assert.ok(md.startsWith('> add a join option for squad players'));
-  assert.ok(md.includes('Added the join flow'));
+  assert.ok(md.startsWith('[[rr:you]]\nadd a join option for squad players'));
+  assert.ok(md.includes('[[rr:claude]]\nAdded the join flow'));
   assert.equal(firstPrompt, 'add a join option for squad players');
+});
+
+test('compileTranscript captures tool calls and thinking as their own turns', () => {
+  const jsonl = jl([
+    { type: 'user', message: { role: 'user', content: 'fix it' } },
+    { type: 'assistant', message: { role: 'assistant', content: [
+      { type: 'thinking', thinking: 'weighing options' },
+      { type: 'text', text: 'On it.' },
+      { type: 'tool_use', name: 'Bash', input: { command: 'git commit -am fix' } },
+    ] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: '1 file changed' }] } },
+  ]);
+  const { md } = compileTranscript(jsonl);
+  assert.ok(md.includes('[[rr:think]]\nweighing options'));
+  assert.ok(md.includes('[[rr:claude]]\nOn it.'));
+  assert.ok(md.includes('[[rr:tool Bash]]\ngit commit -am fix'));
+  assert.ok(md.includes('1 file changed')); // tool_result folded into the tool turn
+});
+
+test('compileTranscript keeps full text — no 60k mid-conversation cut', () => {
+  const big = 'word '.repeat(20000).trim(); // ~100k chars of assistant prose
+  const { md } = compileTranscript(jl([
+    { role: 'user', content: 'start' },
+    { role: 'assistant', content: big },
+  ]));
+  assert.ok(md.includes(big));        // not truncated
+  assert.ok(!md.includes('trimmed')); // ceiling not hit
 });
 
 test('buildPayload skips thin transcripts, sets group + source', () => {
@@ -88,20 +115,31 @@ test('isBackground filters sub-agents, observers, and observer cwds — keeps re
   assert.equal(isBackground(observerCwd), true);
 });
 
-test('buildPayload drops background sessions and titles from the summary', () => {
+test('buildPayload drops background sessions; title is your most recent prompt', () => {
   const sidechain = jl([
     { type: 'user', isSidechain: true, message: { role: 'user', content: 'review this' } },
     { type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'done with the review of everything' }] } },
   ]);
   assert.equal(buildPayload({ jsonl: sidechain, sessionId: 'claude:x' }), null);
 
-  const withSummary = jl([
+  const session = jl([
     { type: 'summary', summary: 'ER2 vehicle crew control fix' },
     { type: 'user', userType: 'external', message: { role: 'user', content: 'the crew controller crashes on spawn, please investigate and fix it' } },
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Found a null deref; patched and tested.' }] } },
   ]);
-  const p = buildPayload({ jsonl: withSummary, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
-  assert.equal(p.title, 'ER2 vehicle crew control fix'); // sidebar-style title from the summary
+  const p = buildPayload({ jsonl: session, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
+  assert.equal(p.title, 'the crew controller crashes on spawn, please investigate and fix it'); // your prompt, not the summary
+});
+
+test('buildPayload previews Claude\'s latest turn (title = your prompt, preview = where we are)', () => {
+  const p = buildPayload({ jsonl: jl([
+    { role: 'user', content: 'start the scoreboard work' },
+    { role: 'assistant', content: 'Set up the overlay.' },
+    { role: 'user', content: 'now persist the scores' },
+    { role: 'assistant', content: 'Persisted to disk and added a test.' },
+  ]), sessionId: 'pv-1' });
+  assert.ok(p.title.startsWith('now persist the scores'));
+  assert.equal(p.preview, 'Persisted to disk and added a test.');
 });
 
 test('Codex env-context block is skipped for the title; cwd parsed from it', () => {

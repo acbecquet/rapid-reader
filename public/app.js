@@ -80,12 +80,16 @@ function logError(kind, message, context = '') {
 addEventListener('error', (e) => logError('window-error', e.message, (e.filename || '') + ':' + (e.lineno || '')));
 addEventListener('unhandledrejection', (e) => logError('unhandled-rejection', e.reason?.message || String(e.reason || '')));
 
-// A title that "looks wrong": empty, only symbols, or leaked markup/markdown.
+// A title that "looks wrong": empty, only symbols, leaked markdown/markup, a
+// file path, or slash-command / handoff / trim-marker text — i.e. not a title.
 function looksBadTitle(t) {
   t = String(t || '').trim();
   if (t.length < 2) return true;
-  if (/^[#*\-–—.·•·\s]+$/.test(t)) return true;       // just markdown/punctuation
-  if (/^[<{[]/.test(t) || /environment_context|AGENTS\.md/i.test(t)) return true; // markup leak
+  if (/^[#*\-–—.·•\s>]+$/.test(t)) return true;                 // only markdown/punctuation
+  if (/^[<{[(]/.test(t)) return true;                           // markup/paren leak: < { [ (
+  if (/^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(t)) return true;  // leading heading/bold/quote/bullet
+  if (/^[@"']*[A-Za-z]:[\\/]/.test(t)) return true;             // a Windows file path, not a title
+  if (/environment_context|AGENTS\.md|command-(name|message|args)|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(t)) return true;
   return false;
 }
 // lazy + capped: heal only items you open, once each, a handful per session
@@ -105,6 +109,35 @@ async function healTitle(item) {
       lastRender = ''; renderColumns();
     }
   } catch { /* logged already; leave the heuristic title */ }
+}
+
+// Title every agent item with the user's most recent prompt (deriveTitle),
+// re-derived from the body — a few per poll, capped. Only IDLE sessions (no
+// sync in ~2 min) so we never fight an actively-syncing session's own title.
+const agentHealed = new Set();
+let agentHealCount = 0;
+async function healAgentTitles() {
+  if (agentHealCount >= 30) return;
+  const idle = Date.now() - 120000;
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.titlePinned && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
+  let changed = false;
+  for (const it of cand.slice(0, 4)) {
+    agentHealed.add(it.id); agentHealCount++;
+    try {
+      const { text } = await api('GET', 'items', { query: { id: it.id } });
+      const patch = {};
+      const title = P.deriveTitle(text);
+      const preview = P.derivePreview(text);
+      if (title && title !== it.title) patch.title = title;
+      if (preview && preview !== it.preview) patch.preview = preview;
+      if (Object.keys(patch).length) {
+        Object.assign(it, patch);
+        api('PATCH', 'items', { body: { id: it.id, ...patch } }).catch(() => {});
+        changed = true;
+      }
+    } catch { /* try a different item next poll */ }
+  }
+  if (changed) { lastRender = ''; renderColumns(); }
 }
 
 // ---------- backlog list ----------
@@ -147,6 +180,7 @@ async function refresh() {
     items = fresh;
     knownIds = new Set(items.map((i) => i.id));
     renderColumns();
+    healAgentTitles();
     updateMcp();
     setStatus(`synced · ${items.length} item${items.length === 1 ? '' : 's'}`);
     // an upserted item (e.g. a live agent session) updates the open reader in
@@ -357,12 +391,14 @@ function renderColumns() {
     // the agents column shows one agent at a time, never the noise groups
     if (agentCol) list = list.filter((it) => agentMatch(it) && !NOISE_GROUP.test(it.group || ''));
     const c = document.createElement('div');
-    c.className = 'col';
+    c.className = 'col' + (col.density === 'compact' ? ' compact' : '');
     c.dataset.col = col.id;
+    if (col.color) c.style.setProperty('--col-accent', col.color);
     const h = document.createElement('div');
     h.className = 'col-h';
     h.innerHTML = `<span class="col-i">${icon(col.icon)}</span>`;
     h.append(agentCol ? agentPicker() : colNameSpan(col.name), colCountSpan(list.length));
+    if (list.some((it) => it.order != null)) h.append(colResetBtn(list));
     c.append(h);
     const body = document.createElement('div');
     body.className = 'col-body';
@@ -382,9 +418,46 @@ function renderColumns() {
 // under collapsible sub-headers — like the Claude Code sidebar. Ungrouped
 // items render flat at the top.
 const byNewest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+let dragId = null;
+// Manual order pins a column: ordered items sort by `order`; new (un-ordered)
+// items float to the top by recency, so arrivals don't disturb your arrangement.
+const bySaved = (a, b) => {
+  if (a.order == null && b.order == null) return byNewest(a, b);
+  if (a.order == null) return -1;
+  if (b.order == null) return 1;
+  return a.order - b.order;
+};
+
+// Drop `dragId` next to `targetId` within one list, renumber `order`, persist.
+function reorderWithin(list, dragId, targetId) {
+  const from = list.findIndex((x) => x.id === dragId);
+  const to = list.findIndex((x) => x.id === targetId);
+  if (from < 0 || to < 0) return;
+  const arr = [...list];
+  const [moved] = arr.splice(from, 1);
+  arr.splice(to, 0, moved);
+  arr.forEach((it, i) => {
+    if (it.order !== i) { it.order = i; api('PATCH', 'items', { body: { id: it.id, order: i } }).catch(() => {}); }
+  });
+  lastRender = ''; renderColumns();
+}
+
+// Clear manual order on a column → back to sort-by-recent.
+function colResetBtn(list) {
+  const b = document.createElement('button');
+  b.className = 'col-reset';
+  b.textContent = '↻';
+  b.title = 'Sort by recent (clear manual order)';
+  b.onclick = (e) => {
+    e.stopPropagation();
+    for (const it of list) if (it.order != null) { delete it.order; api('PATCH', 'items', { body: { id: it.id, order: null } }).catch(() => {}); }
+    lastRender = ''; renderColumns();
+  };
+  return b;
+}
 
 function renderColBody(body, col, list) {
-  const ungrouped = list.filter((it) => !it.group).sort(byNewest);
+  const ungrouped = list.filter((it) => !it.group).sort(bySaved);
   for (const it of ungrouped) body.append(itemRow(it, col.id, ungrouped));
 
   // groups ordered by their most recent item (newest project on top)
@@ -401,7 +474,7 @@ function renderColBody(body, col, list) {
     // a book group: chapters in reading order, with a bookmark on the current one
     const isBook = gItems.some((it) => it.bookId);
     if (isBook) gItems.sort((a, b) => (a.chapterIndex || 0) - (b.chapterIndex || 0));
-    else gItems.sort(byNewest); // agents: most recent session on top
+    else gItems.sort(bySaved); // agents/other: manual order if set, else most recent on top
     const bm = isBook
       ? gItems.reduce((a, b) => ((b.bookmarkAt || 0) > (a?.bookmarkAt || 0) ? b : a), null)
       : null;
@@ -409,7 +482,12 @@ function renderColBody(body, col, list) {
     const collapsed = collapsedGroups.has(gkey);
     const gh = document.createElement('div');
     gh.className = 'group' + (collapsed ? ' collapsed' : '');
-    gh.innerHTML = `<span class="caret">▾</span><span class="g-n">${name}</span>`;
+    const caret = document.createElement('span'); caret.className = 'caret'; caret.textContent = '▾';
+    const gn = document.createElement('span'); gn.className = 'g-n';
+    gn.textContent = (prefs.groupAliases && prefs.groupAliases[name]) || name;
+    gn.title = 'Double-click to rename';
+    gn.ondblclick = (e) => { e.stopPropagation(); editGroupAlias(gn, name); };
+    gh.append(caret, gn);
     if (bm?.bookmarkAt) {
       // one-click resume — open the bookmarked chapter at its saved spot, even
       // when the book is collapsed and you've been away for days
@@ -441,6 +519,14 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (isBookmark ? ' bookmark' : '')
     + (resumeMap[colId] === it.id && cur?.item.id !== it.id ? ' resume' : '')
     + (selected.has(it.id) ? ' sel' : '');
+  row.draggable = !it.bookId; // chapters stay in reading order
+  if (row.draggable) {
+    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); };
+    row.ondragend = () => { dragId = null; row.classList.remove('dragging'); document.querySelectorAll('.item.drop-target').forEach((el) => el.classList.remove('drop-target')); };
+    row.ondragover = (e) => { if (dragId && dragId !== it.id && colItems.some((x) => x.id === dragId)) { e.preventDefault(); row.classList.add('drop-target'); } };
+    row.ondragleave = () => row.classList.remove('drop-target');
+    row.ondrop = (e) => { e.preventDefault(); row.classList.remove('drop-target'); if (dragId && dragId !== it.id) reorderWithin(colItems, dragId, it.id); };
+  }
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
   const t = document.createElement('div');
@@ -453,14 +539,99 @@ function itemRow(it, colId, colItems, isBookmark) {
     ago.textContent = relTime(it.createdAt);
     row.append(ago);
   }
-  row.onclick = (e) => {
+  const del = document.createElement('button');
+  del.className = 'item-del';
+  del.title = 'Delete (recoverable)';
+  del.textContent = '✕';
+  del.onclick = (e) => {
+    e.stopPropagation();
+    const gone = [it];
+    items = items.filter((x) => x.id !== it.id);
+    if (cur?.item.id === it.id) closeReader();
+    api('DELETE', 'items', { body: { id: it.id } }).catch(() => {}); // soft (recoverable)
+    lastRender = ''; renderColumns();
+    toast('Deleted', { label: 'Undo', fn: () => undelete(gone) });
+  };
+  row.append(del);
+  if (it.preview && !it.bookId) {
+    const pv = document.createElement('div');
+    pv.className = 'item-pv';
+    pv.textContent = it.preview;
+    row.append(pv);
+  }
+  const activate = (e) => {
     if (e.metaKey || e.ctrlKey) { toggleSelect(it.id); lastClick[colId] = it.id; return; }
     if (e.shiftKey) { selectRange(colId, colItems, it.id); return; }
     if (selected.size) { clearSelection(); }
     lastClick[colId] = it.id;
     cur?.item.id === it.id ? closeReader() : openItem(it, { start: settings.autoplay });
   };
+  row.onclick = activate;
+  // double-click the title to rename; single-click still opens (debounced so the
+  // gestures don't fight). A manual rename pins the title against auto-titling.
+  let tTimer;
+  t.onclick = (e) => {
+    if (t.isContentEditable) return;
+    e.stopPropagation();
+    if (e.detail > 1) return;
+    clearTimeout(tTimer);
+    tTimer = setTimeout(() => activate(e), 200);
+  };
+  t.ondblclick = (e) => { e.stopPropagation(); clearTimeout(tTimer); editItemTitle(t, it); };
   return row;
+}
+
+// Inline-edit a backlog item's title; Enter saves + pins it, Esc/empty reverts.
+function editItemTitle(span, it) {
+  const row = span.closest('.item');
+  if (row) row.draggable = false; // don't let drag hijack text selection while editing
+  span.contentEditable = 'true';
+  span.textContent = it.title;
+  span.focus();
+  const sel = getSelection(); const r = document.createRange();
+  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    span.contentEditable = 'false';
+    if (row) row.draggable = !it.bookId;
+    const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (save && val && val !== it.title) {
+      it.title = val; it.titlePinned = true;
+      api('PATCH', 'items', { body: { id: it.id, title: val, titlePinned: true } }).catch(() => {});
+    }
+    lastRender = ''; renderColumns();
+  };
+  span.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  span.onblur = () => finish(true);
+}
+
+// Inline-edit a subgroup's display name → a per-user alias (the real group is
+// kept, so new items joining inherit the alias and live updates survive).
+function editGroupAlias(span, realGroup) {
+  span.contentEditable = 'true';
+  span.focus();
+  const sel = getSelection(); const r = document.createRange();
+  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    span.contentEditable = 'false';
+    const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 60);
+    if (save && val) {
+      prefs.groupAliases = { ...(prefs.groupAliases || {}), [realGroup]: val };
+      api('PATCH', 'prefs', { body: { groupAliases: prefs.groupAliases } }).then((res) => { if (res?.prefs) prefs = res.prefs; }).catch(() => {});
+    }
+    lastRender = ''; renderColumns();
+  };
+  span.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  };
+  span.onblur = () => finish(true);
 }
 
 // ---------- multiselect (ctrl/cmd-click toggle, shift-click range) ----------
@@ -504,10 +675,13 @@ function renderSelbar() {
   act('Archive', () => bulk((it) => { it.archivedAt = Date.now(); }, { archivedAt: Date.now() }));
   act('Delete', () => {
     const ids = [...selected];
+    const gone = items.filter((x) => selected.has(x.id));
     items = items.filter((x) => !selected.has(x.id));
     if (cur && selected.has(cur.item.id)) closeReader();
     clearSelection();
-    api('DELETE', 'items', { body: { ids } }).catch(() => {});
+    api('DELETE', 'items', { body: { ids } }).catch(() => {}); // soft (recoverable)
+    lastRender = ''; renderColumns();
+    toast(`Deleted ${ids.length} item${ids.length === 1 ? '' : 's'}`, { label: 'Undo', fn: () => undelete(gone) });
   });
   act('Clear', clearSelection);
 }
@@ -517,6 +691,16 @@ function bulk(mutate, patch) {
   for (const it of items) if (selected.has(it.id)) mutate(it);
   clearSelection();
   for (const id of ids) api('PATCH', 'items', { body: { id, ...patch } }).catch(() => {});
+}
+
+// Bring soft-deleted items back: re-show locally + clear deletedAt server-side.
+function undelete(arr) {
+  for (const it of arr) {
+    it.deletedAt = null;
+    if (!items.find((x) => x.id === it.id)) items.push(it);
+    api('PATCH', 'items', { body: { id: it.id, deletedAt: null } }).catch(() => {});
+  }
+  lastRender = ''; renderColumns();
 }
 
 // ---------- column customization ----------
@@ -553,11 +737,22 @@ function renderColCfg() {
       };
       srcs.append(chip);
     }
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.className = 'colcfg-color';
+    color.value = col.color || '#e0443e';
+    color.title = 'Column accent';
+    color.oninput = () => { col.color = color.value; };
+    const dens = document.createElement('button');
+    dens.className = 'chip tiny' + (col.density === 'compact' ? ' on' : '');
+    dens.textContent = 'compact';
+    dens.title = 'Denser rows';
+    dens.onclick = () => { col.density = col.density === 'compact' ? 'cozy' : 'compact'; renderColCfg(); };
     const del = document.createElement('button');
     del.className = 'chip';
     del.textContent = '× remove';
     del.onclick = () => { draftCols.splice(idx, 1); renderColCfg(); };
-    card.append(name, srcs, del);
+    card.append(name, color, dens, srcs, del);
     box.append(card);
   });
 }
@@ -629,21 +824,61 @@ function buildTranscript() {
   nowSpan = null;
   const bySec = cur.sections.map(() => []);
   cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
+  const hasRoles = cur.sections.some((s) => s.role);
+  const theme = (prefs.transcript && prefs.transcript.roles) || {};
+  let turn = box, turnRole;
+
   cur.sections.forEach((sec, idx) => {
-    if (!bySec[idx].length) return;
+    // role mode: open a new turn block each time the speaker changes
+    if (hasRoles && sec.role !== turnRole) {
+      turnRole = sec.role;
+      const th = sec.role ? (theme[sec.role] || {}) : null;
+      if (th && th.show === false) {
+        turn = null;
+      } else {
+        turn = document.createElement('div');
+        turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
+        if (th) {
+          if (th.box) turn.classList.add('boxed');
+          if (th.align) { turn.style.textAlign = th.align; if (th.box) turn.classList.add('a-' + th.align); }
+          if (th.color) turn.style.color = th.color;
+          const lbl = document.createElement('span');
+          lbl.className = 'turn-label';
+          lbl.textContent = th.label || sec.role;
+          turn.append(lbl);
+        }
+        box.append(turn);
+      }
+    }
+    if (!turn) return; // hidden role
+
+    // tool calls + thinking: collapsed, read from raw (they carry no RSVP tokens)
+    if (sec.role === 'tool' || sec.role === 'think') {
+      const det = document.createElement('details');
+      det.open = (theme[sec.role] || {}).collapsed === false;
+      const sum = document.createElement('summary');
+      sum.textContent = (sec.role === 'tool' ? '⚙ ' : '◇ ') + (sec.type === 'code' ? 'code' : (sec.text || '').slice(0, 64));
+      const pre = document.createElement('pre');
+      pre.textContent = sec.type === 'code' ? stripFence(sec.raw) : (sec.raw || sec.text || '');
+      det.append(sum, pre);
+      turn.append(det);
+      return;
+    }
+
     if (sec.type === 'code') {
       // show the real code here — this is where you read it normally
       const pre = document.createElement('pre');
-      pre.textContent = sec.raw.replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
-      pre.dataset.i = bySec[idx][0][1];
-      box.append(pre);
+      pre.textContent = stripFence(sec.raw);
+      if (bySec[idx][0]) pre.dataset.i = bySec[idx][0][1];
+      turn.append(pre);
       return;
     }
+    if (!bySec[idx].length) return;
+
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';
-    else if (sec.type === 'quote') {
-      // a blockquote: in an agent/chat transcript it's a prompt you wrote
-      // (right-aligned, labelled); elsewhere it's just a quote
+    else if (!hasRoles && sec.type === 'quote') {
+      // legacy (pre-sentinel) transcript: your prompts as a right-aligned label
       if (AGENT_SOURCES.has(cur.item.sourceType)) {
         para.className = 'you';
         const lbl = document.createElement('span');
@@ -661,8 +896,9 @@ function buildTranscript() {
       if (t.link) s.classList.add('link');
       para.append(s, ' ');
     }
-    box.append(para);
+    turn.append(para);
   });
+
   box.onclick = (e) => {
     const el = e.target.closest('[data-i]');
     if (!el) return;
@@ -672,6 +908,10 @@ function buildTranscript() {
     seek(i);
   };
   applyTranscript();
+}
+
+function stripFence(raw) {
+  return (raw || '').replace(/^\s*(```|~~~).*\n?/, '').replace(/\n?\s*(```|~~~)\s*$/, '');
 }
 
 // ---------- linked pages (URL inside a text → its own backlog item) ----------
@@ -1241,6 +1481,39 @@ function fillSettingsForm() {
   $('s-aikey-btn').textContent = hasKey ? 'Replace your Gemini key' : 'Add your free Gemini key';
   $('s-account').hidden = !settings.account;
   if (settings.account) $('s-email').textContent = settings.account.email || settings.account.name;
+  renderRoleSettings();
+}
+
+// Per-role transcript appearance controls (you / claude / tool / think). Each
+// change patches prefs.transcript and re-renders the open transcript at once.
+function renderRoleSettings() {
+  const box = $('s-roles');
+  if (!box) return;
+  const roles = (prefs && prefs.transcript && prefs.transcript.roles) || {};
+  box.textContent = '';
+  for (const r of ['you', 'claude', 'tool', 'think']) {
+    const v = roles[r] || {};
+    const row = document.createElement('div');
+    row.className = 'role-row';
+    row.innerHTML = `
+      <b>${r}</b>
+      <label><input type="checkbox" data-k="show" ${v.show !== false ? 'checked' : ''}> show</label>
+      <input data-k="label" value="${v.label || r}" maxlength="24" class="num">
+      <select data-k="align"><option ${v.align === 'left' ? 'selected' : ''}>left</option><option ${v.align === 'center' ? 'selected' : ''}>center</option><option ${v.align === 'right' ? 'selected' : ''}>right</option></select>
+      <input type="color" data-k="color" value="${v.color || '#cfe8d8'}">
+      <label><input type="checkbox" data-k="box" ${v.box ? 'checked' : ''}> box</label>`;
+    row.onchange = async (e) => {
+      const k = e.target.dataset.k;
+      if (!k) return;
+      const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      const t = (prefs.transcript && prefs.transcript.roles) ? prefs.transcript : { roles: {} };
+      t.roles[r] = { ...t.roles[r], [k]: val };
+      prefs.transcript = t;
+      try { const { prefs: np } = await api('PATCH', 'prefs', { body: { transcript: t } }); prefs = np; } catch {}
+      if (cur) buildTranscript();
+    };
+    box.append(row);
+  }
 }
 
 $('settings-btn').onclick = () => { fillSettingsForm(); $('settings').hidden = false; };
@@ -1353,7 +1626,7 @@ setInterval(() => {
 // The desktop-leaning header tools don't fit a phone bar, so on narrow screens
 // we relocate them into a dropdown (kept inline on desktop). Capture each tool's
 // home slot now, before any move, so we can put them back when the window widens.
-const MORE_IDS = ['mcp-init', 'mcp-status', 'status', 'info-btn', 'capture-btn', 'epub-btn', 'sources', 'stats-btn', 'cols-btn'];
+const MORE_IDS = ['mcp-init', 'mcp-status', 'status', 'info-btn', 'capture-btn', 'epub-btn', 'sources', 'stats-btn', 'cols-btn', 'trash-btn'];
 const moreEls = MORE_IDS.map((id) => $(id)).filter(Boolean);
 const moreHome = new Map(moreEls.map((el) => [el, [el.parentElement, el.nextElementSibling]]));
 function layoutTools() {
@@ -1374,6 +1647,37 @@ $('more-menu').onclick = (e) => e.stopPropagation(); // keep open while using th
 document.addEventListener('click', () => $('more-menu').classList.remove('open'));
 addEventListener('resize', layoutTools);
 layoutTools();
+
+// ---------- Recently deleted (Trash) ----------
+$('trash-btn').onclick = openTrash;
+$('trash-close').onclick = () => { $('trash').hidden = true; };
+$('trash').onclick = (e) => { if (e.target === $('trash')) $('trash').hidden = true; };
+async function openTrash() {
+  $('trash').hidden = false;
+  const list = $('trash-list');
+  list.textContent = 'Loading…';
+  let deleted = [];
+  try { ({ items: deleted } = await api('GET', 'items', { query: { trash: 1 } })); } catch {}
+  list.textContent = '';
+  if (!deleted.length) { list.innerHTML = '<p class="hint">Nothing deleted recently.</p>'; return; }
+  for (const it of deleted) {
+    const row = document.createElement('div');
+    row.className = 'trash-row';
+    const t = document.createElement('span');
+    t.className = 'trash-t';
+    t.textContent = it.title || '(untitled)';
+    const restore = document.createElement('button');
+    restore.className = 'chip';
+    restore.textContent = 'Restore';
+    restore.onclick = () => { api('PATCH', 'items', { body: { id: it.id, deletedAt: null } }).catch(() => {}); row.remove(); refresh(); };
+    const erase = document.createElement('button');
+    erase.className = 'chip';
+    erase.textContent = 'Erase';
+    erase.onclick = () => { api('DELETE', 'items', { query: { id: it.id, hard: 1 } }).catch(() => {}); row.remove(); };
+    row.append(t, restore, erase);
+    list.append(row);
+  }
+}
 
 // ---------- add text / URL (paste only — sources have their own toggles) ----------
 $('add-btn').onclick = () => { $('add').hidden = false; $('add-text').focus(); };
@@ -1568,11 +1872,20 @@ function updateMcp() {
 
 // ---------- toast ----------
 let toastTimer;
-function toast(msg) {
-  $('toast').textContent = msg;
-  $('toast').hidden = false;
+// `action` = { label, fn }: shows a clickable button (e.g. Undo) + a longer hold.
+function toast(msg, action) {
+  const el = $('toast');
+  el.textContent = msg;
+  if (action) {
+    const b = document.createElement('button');
+    b.className = 'toast-action';
+    b.textContent = action.label;
+    b.onclick = () => { el.hidden = true; clearTimeout(toastTimer); action.fn(); };
+    el.append(' ', b);
+  }
+  el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $('toast').hidden = true; }, 2200);
+  toastTimer = setTimeout(() => { el.hidden = true; }, action ? 7000 : 2200);
 }
 
 // ---------- Google sign-in (optional — token entry still works without it) ----------
