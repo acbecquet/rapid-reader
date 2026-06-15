@@ -117,18 +117,25 @@ async function healTitle(item) {
 const agentHealed = new Set();
 let agentHealCount = 0;
 async function healAgentTitles() {
-  if (agentHealCount >= 30) return;
+  if (agentHealCount >= 40) return;
   const idle = Date.now() - 120000;
-  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.titlePinned && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
+  // title re-derivation stays gated (idle + un-pinned) so we never fight an
+  // actively-syncing session's own title; the preview line has no such risk, so
+  // any agent item still missing one is a candidate (incl. pinned/recent).
+  const titleable = (it) => !it.titlePinned && (it.createdAt || 0) < idle;
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.bookId
+    && !agentHealed.has(it.id) && (!it.preview || titleable(it)));
   let changed = false;
   for (const it of cand.slice(0, 4)) {
     agentHealed.add(it.id); agentHealCount++;
     try {
       const { text } = await api('GET', 'items', { query: { id: it.id } });
       const patch = {};
-      const title = P.deriveTitle(text);
+      if (titleable(it)) {
+        const title = P.deriveTitle(text);
+        if (title && title !== it.title) patch.title = title;
+      }
       const preview = P.derivePreview(text);
-      if (title && title !== it.title) patch.title = title;
       if (preview && preview !== it.preview) patch.preview = preview;
       if (Object.keys(patch).length) {
         Object.assign(it, patch);
@@ -355,6 +362,11 @@ function toggleGroup(gkey) {
 }
 
 function renderColumns() {
+  // Never rebuild the DOM mid-gesture: a drag in flight or an inline rename would
+  // have its element yanked out from under it (this is why both "didn't work" —
+  // the 4s/10s poll fired during the gesture). The gesture's own completion
+  // (drop / Enter / blur) clears the flag and forces the render.
+  if (dragId || inlineEditing) return;
   const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group, i.createdAt, i.bookmarkAt]))
     + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',') + agentView + Math.floor(Date.now() / 60000);
   if (key === lastRender) return;
@@ -391,7 +403,7 @@ function renderColumns() {
     // the agents column shows one agent at a time, never the noise groups
     if (agentCol) list = list.filter((it) => agentMatch(it) && !NOISE_GROUP.test(it.group || ''));
     const c = document.createElement('div');
-    c.className = 'col' + (col.density === 'compact' ? ' compact' : '');
+    c.className = 'col' + (col.density === 'compact' ? ' compact' : '') + (col.color ? ' themed' : '');
     c.dataset.col = col.id;
     if (col.color) c.style.setProperty('--col-accent', col.color);
     const h = document.createElement('div');
@@ -419,6 +431,7 @@ function renderColumns() {
 // items render flat at the top.
 const byNewest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
 let dragId = null;
+let inlineEditing = false; // a title/group rename is in progress — don't rebuild under it
 // Manual order pins a column: ordered items sort by `order`; new (un-ordered)
 // items float to the top by recency, so arrivals don't disturb your arrangement.
 const bySaved = (a, b) => {
@@ -486,6 +499,7 @@ function renderColBody(body, col, list) {
     const gn = document.createElement('span'); gn.className = 'g-n';
     gn.textContent = (prefs.groupAliases && prefs.groupAliases[name]) || name;
     gn.title = 'Double-click to rename';
+    gn.onclick = (e) => { if (gn.isContentEditable) e.stopPropagation(); }; // editing → don't toggle collapse
     gn.ondblclick = (e) => { e.stopPropagation(); editGroupAlias(gn, name); };
     gh.append(caret, gn);
     if (bm?.bookmarkAt) {
@@ -521,11 +535,19 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (selected.has(it.id) ? ' sel' : '');
   row.draggable = !it.bookId; // chapters stay in reading order
   if (row.draggable) {
-    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); };
+    // setData is required or Firefox refuses to start the drag at all.
+    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.id); row.classList.add('dragging'); };
     row.ondragend = () => { dragId = null; row.classList.remove('dragging'); document.querySelectorAll('.item.drop-target').forEach((el) => el.classList.remove('drop-target')); };
     row.ondragover = (e) => { if (dragId && dragId !== it.id && colItems.some((x) => x.id === dragId)) { e.preventDefault(); row.classList.add('drop-target'); } };
     row.ondragleave = () => row.classList.remove('drop-target');
-    row.ondrop = (e) => { e.preventDefault(); row.classList.remove('drop-target'); if (dragId && dragId !== it.id) reorderWithin(colItems, dragId, it.id); };
+    // drop fires before dragend, so clear dragId here (a local copy drives the
+    // reorder) — otherwise the render guard would block the reorder's repaint.
+    row.ondrop = (e) => {
+      e.preventDefault();
+      row.classList.remove('drop-target');
+      const from = dragId; dragId = null;
+      if (from && from !== it.id) reorderWithin(colItems, from, it.id);
+    };
   }
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
@@ -571,33 +593,54 @@ function itemRow(it, colId, colItems, isBookmark) {
   // gestures don't fight). A manual rename pins the title against auto-titling.
   let tTimer;
   t.onclick = (e) => {
-    if (t.isContentEditable) return;
+    // while editing, swallow clicks entirely so they don't bubble to the row's
+    // open/close handler (that re-render was destroying the edit field mid-type)
+    if (t.isContentEditable) { e.stopPropagation(); return; }
     e.stopPropagation();
     if (e.detail > 1) return;
     clearTimeout(tTimer);
     tTimer = setTimeout(() => activate(e), 200);
   };
-  t.ondblclick = (e) => { e.stopPropagation(); clearTimeout(tTimer); editItemTitle(t, it); };
+  t.ondblclick = (e) => {
+    e.stopPropagation();
+    clearTimeout(tTimer);
+    if (t.isContentEditable) return; // already editing → let the native word-select happen
+    editItemTitle(t, it);
+  };
   return row;
 }
 
 // Inline-edit a backlog item's title; Enter saves + pins it, Esc/empty reverts.
 function editItemTitle(span, it) {
+  if (span.isContentEditable) return; // already editing this title
+  inlineEditing = true;               // freeze re-renders so the poll can't yank the field
   const row = span.closest('.item');
-  if (row) row.draggable = false; // don't let drag hijack text selection while editing
+  // a contentEditable nested in a draggable element won't accept typing in Chrome
+  // (selection collapses, keys are swallowed) — turn dragging off for the edit.
+  if (row) row.draggable = false;
   span.contentEditable = 'true';
   span.textContent = it.title;
-  span.focus();
-  const sel = getSelection(); const r = document.createRange();
-  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  // defer focus+select-all to the next frame, so it lands after the double-click /
+  // drag-arm gesture fully settles (otherwise the selection collapses immediately)
+  requestAnimationFrame(() => {
+    span.focus();
+    const sel = getSelection(); const r = document.createRange();
+    r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  });
   let done = false;
   const finish = (save) => {
     if (done) return; done = true;
+    inlineEditing = false;
     span.contentEditable = 'false';
     if (row) row.draggable = !it.bookId;
     const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (save && val && val !== it.title) {
       it.title = val; it.titlePinned = true;
+      // a poll may have swapped `items` for a fresh array mid-edit; pin the rename
+      // onto the live object too so the optimistic title survives the next render
+      const live = items.find((x) => x.id === it.id);
+      if (live) { live.title = val; live.titlePinned = true; }
+      if (cur?.item.id === it.id) $('item-title').textContent = val;
       api('PATCH', 'items', { body: { id: it.id, title: val, titlePinned: true } }).catch(() => {});
     }
     lastRender = ''; renderColumns();
@@ -612,13 +655,18 @@ function editItemTitle(span, it) {
 // Inline-edit a subgroup's display name → a per-user alias (the real group is
 // kept, so new items joining inherit the alias and live updates survive).
 function editGroupAlias(span, realGroup) {
+  if (span.isContentEditable) return;
+  inlineEditing = true; // freeze re-renders so the poll can't yank the field mid-edit
   span.contentEditable = 'true';
-  span.focus();
-  const sel = getSelection(); const r = document.createRange();
-  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  requestAnimationFrame(() => {
+    span.focus();
+    const sel = getSelection(); const r = document.createRange();
+    r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  });
   let done = false;
   const finish = (save) => {
     if (done) return; done = true;
+    inlineEditing = false;
     span.contentEditable = 'false';
     const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 60);
     if (save && val) {
@@ -1153,6 +1201,17 @@ async function openItem(item, { start = true } = {}) {
   // lazy AI self-heal (non-agent items only — agent sessions are titled by the
   // native model in the sync hook, not Gemini/MiniMax): only what you opened
   if (!item.live && !settings.aiDisabled && !AGENT_SOURCES.has(item.sourceType) && looksBadTitle(item.title)) healTitle(item);
+  // backfill the preview line ("where we are now") for an agent item the moment
+  // you open it — free, since the body is already loaded here (no extra fetch)
+  if (!item.live && !item.bookId && AGENT_SOURCES.has(item.sourceType)) {
+    const preview = P.derivePreview(text);
+    if (preview && preview !== item.preview) {
+      item.preview = preview;
+      const live = items.find((x) => x.id === item.id);
+      if (live) live.preview = preview;
+      api('PATCH', 'items', { body: { id: item.id, preview } }).catch(() => {});
+    }
+  }
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);

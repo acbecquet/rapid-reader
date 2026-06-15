@@ -97,6 +97,17 @@ test('PATCH order persists and clears (manual column pinning)', async () => {
   await call('DELETE', { query: { id }, body: { hard: true } });
 });
 
+test('preview line persists (POST carries it, PATCH updates it, poll returns it)', async () => {
+  let r = await call('POST', { body: { text: 'an agent session body', sourceType: 'claude_code', preview: 'Working on the parser' } });
+  const id = r.body.item.id;
+  assert.equal(r.body.item.preview, 'Working on the parser'); // POST carries it through
+  r = await call('PATCH', { body: { id, preview: 'Now running the tests' } });
+  assert.equal(r.body.item.preview, 'Now running the tests'); // PATCH updates it
+  r = await call('GET');
+  assert.equal(r.body.items.find((i) => i.id === id).preview, 'Now running the tests'); // on the poll
+  await call('DELETE', { query: { id }, body: { hard: true } });
+});
+
 test('source types: explicit, claude.ai detection, manual default, progress/archive patch', async () => {
   let r = await call('POST', { body: { text: 'Codex says hi', sourceType: 'codex' } });
   assert.equal(r.body.item.sourceType, 'codex');
