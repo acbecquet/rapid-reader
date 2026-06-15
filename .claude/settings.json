@@ -1,0 +1,29 @@
+{
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "superpowers-dev": {
+      "source": {
+        "source": "github",
+        "repo": "obra/superpowers"
+      }
+    }
+  },
+  "enabledPlugins": [
+    "skill-creator@claude-plugins-official",
+    "hookify@claude-plugins-official",
+    "frontend-design@claude-plugins-official",
+    "ralph-loop@claude-plugins-official",
+    "pr-review-toolkit@claude-plugins-official",
+    "plugin-dev@claude-plugins-official",
+    "playground@claude-plugins-official",
+    "typescript-lsp@claude-plugins-official",
+    "swift-lsp@claude-plugins-official",
+    "code-review@claude-plugins-official",
+    "superpowers@superpowers-dev"
+  ]
+}

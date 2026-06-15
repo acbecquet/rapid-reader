@@ -118,3 +118,27 @@ Hard-won, from a real mistake — do not repeat it:
 - Stats stay aggregate-only: no captured text in `rr:stats`, ever.
 - New env: `BLOB_READ_WRITE_TOKEN` (Vercel Blob), `TELEGRAM_WEBHOOK_SECRET`,
   `EMAIL_WEBHOOK_SECRET`. `/api/health` reports whether Redis/Blob are wired.
+
+## Environments & deploy flow
+
+Two long-lived branches, each a Vercel target:
+- `main` → production → `rapid-reader.acb-apps.com`
+- `staging` → preview → `test.acb-apps.com`
+
+Every PR to `main` is auto-mirrored onto `staging` by
+`.github/workflows/pr-to-staging.yml`, so it deploys to `test.acb-apps.com` for
+review before merge — one PR "on test" at a time (latest update wins). On
+approval, merge the PR to `main`; afterward `staging` may need a reset to `main`
+to drop the squashed commit. Env vars must also be enabled for the **Preview**
+environment (a branch domain is a Preview deploy), or test lacks
+`GOOGLE_CLIENT_ID` etc. Google sign-in also needs the staging origin
+(`https://test.acb-apps.com`) in the OAuth client's **Authorized JavaScript
+origins** (no wildcards allowed), or it fails with `origin_mismatch`.
+
+## Tooling (Claude Code plugins)
+
+`.claude/settings.json` enables plugins from the
+`anthropics/claude-plugins-official` marketplace (skill-creator, hookify,
+frontend-design, ralph-loop, pr-review-toolkit, plugin-dev, playground,
+typescript-lsp, swift-lsp, code-review). Interactive sessions are prompted to
+install them on first trust; they don't auto-load in fresh web sessions.
