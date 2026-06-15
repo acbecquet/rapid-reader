@@ -86,3 +86,34 @@ test('isCodeHeavy detects diffs and code dumps, not prose', () => {
   assert.equal(isCodeHeavy(SAMPLE), false);
   assert.equal(isCodeHeavy('Plain explanation of the work that was done across several sentences and lines.\nMore prose.\nEven more.\nAnd more.'), false);
 });
+
+const CHAT = `[[rr:you]]
+fix the crash
+
+[[rr:claude]]
+Done. Here's the fix.
+
+[[rr:tool Bash]]
+git commit -am fix
+
+[[rr:think]]
+considering edge cases`;
+
+test('parseStructure stamps role from [[rr:…]] sentinels', () => {
+  const s = parseStructure(CHAT);
+  assert.deepEqual(s.map((x) => x.role), ['you', 'claude', 'tool', 'think']);
+  assert.equal(s[0].text, 'fix the crash');
+  assert.equal(s[1].text, "Done. Here's the fix.");
+});
+
+test('readingTokens excludes tool and think turns from the RSVP stream', () => {
+  const t = readingTokens(parseStructure(CHAT));
+  const secs = new Set(t.map((x) => x.sec));
+  assert.ok(secs.has(0) && secs.has(1));   // you + claude are read
+  assert.ok(!secs.has(2) && !secs.has(3)); // tool + think are not
+});
+
+test('bodies without sentinels keep role null (legacy unchanged)', () => {
+  const s = parseStructure('Just prose.\n\n> a quote');
+  assert.deepEqual(s.map((x) => x.role), [null, null]);
+});
