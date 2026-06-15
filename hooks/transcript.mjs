@@ -5,8 +5,10 @@
 //   - observer/memory agents      → automated first prompt / observer cwd
 //   - injected context            → <environment_context>, AGENTS.md, etc.
 // Titles prefer the session's own summary (matches the native sidebar).
+// Each turn is emitted behind a [[rr:role]] sentinel line so the reader can
+// attribute it (you / claude / tool / think) faithfully.
 
-const TEXT_CAP = 60000;
+const TEXT_CAP = 1_000_000; // ~1MB safety ceiling; normal sessions never reach it
 
 // Non-conversational user content that's in the transcript but not part of the
 // chat as shown natively (Codex env block, AGENTS.md, system reminders, …).
@@ -81,26 +83,87 @@ export function isBackground(jsonl) {
   return false;
 }
 
-// JSONL → { md, firstPrompt }. user prompts → "# heading", assistant → prose,
-// injected context dropped.
+// Compact, readable summary of a tool_use input (command/desc/path/etc.).
+function toolInput(input) {
+  if (input == null) return '';
+  if (typeof input === 'string') return input;
+  const o = input;
+  const pick = o.command || o.description || o.file_path || o.path || o.pattern || o.query || o.url;
+  if (pick) return String(pick);
+  try { return JSON.stringify(o); } catch { return ''; }
+}
+
+function toolResultText(content) {
+  if (typeof content === 'string') return content.trim();
+  if (Array.isArray(content)) return content.map((b) => (typeof b === 'string' ? b : (b?.text || ''))).filter(Boolean).join('\n').trim();
+  return String(content?.text || '').trim();
+}
+
+// One JSONL entry → { role, blocks:[{kind:'text'|'think'|'tool'|'toolresult', text, name?}] } | null.
+// Richer than oneMessage (which stays for isBackground); preserves tool/thinking turns.
+export function blocksOf(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const node = entry.message || entry.payload || entry;
+  const type = node.type || entry.type;
+  const role = node.role || entry.role;
+  if (!role) {
+    if (/agent|assistant/i.test(type) && (node.message || node.text)) return { role: 'assistant', blocks: [{ kind: 'text', text: String(node.message || node.text).trim() }] };
+    if (/user/i.test(type) && (node.message || node.text)) return { role: 'user', blocks: [{ kind: 'text', text: String(node.message || node.text).trim() }] };
+    return null;
+  }
+  if (role !== 'user' && role !== 'assistant') return null;
+  const c = node.content;
+  const blocks = [];
+  const pushText = (t) => { t = String(t || '').trim(); if (t) blocks.push({ kind: 'text', text: t }); };
+  if (typeof c === 'string') pushText(c);
+  else if (Array.isArray(c)) {
+    for (const b of c) {
+      if (typeof b === 'string') { pushText(b); continue; }
+      if (!b || typeof b !== 'object') continue;
+      const bt = b.type || '';
+      if (bt === 'thinking' || b.thinking) blocks.push({ kind: 'think', text: String(b.thinking || b.text || '').trim() });
+      else if (bt === 'tool_use') blocks.push({ kind: 'tool', name: String(b.name || 'tool'), text: toolInput(b.input) });
+      else if (bt === 'tool_result') blocks.push({ kind: 'toolresult', text: toolResultText(b.content) });
+      else pushText(b.text || b.content);
+    }
+  } else if (typeof node.text === 'string') pushText(node.text);
+  return blocks.length ? { role, blocks } : null;
+}
+
+// JSONL → { md, firstPrompt }. Each turn opens with a [[rr:role]] sentinel line;
+// content follows verbatim. Injected context dropped. No mid-turn truncation.
 export function compileTranscript(jsonl) {
   const out = [];
   let firstPrompt = '';
   for (const line of jsonl.split('\n')) {
     let entry; try { entry = JSON.parse(line); } catch { continue; }
-    const m = oneMessage(entry);
-    if (!m) continue;
-    if (m.role === 'user') {
-      if (INJECTED.test(m.text)) continue;
-      const flat = m.text.replace(/\s+/g, ' ').trim();
-      if (!firstPrompt) firstPrompt = flat;
-      out.push('> ' + flat); // the prompt you wrote → a "You wrote:" turn in the reader
-    } else {
-      out.push(m.text);
+    const t = blocksOf(entry);
+    if (!t) continue;
+    for (const b of t.blocks) {
+      if (b.kind === 'text') {
+        if (t.role === 'user') {
+          if (INJECTED.test(b.text)) continue;
+          if (!firstPrompt) firstPrompt = b.text.replace(/\s+/g, ' ').trim();
+          out.push('[[rr:you]]\n' + b.text);
+        } else {
+          out.push('[[rr:claude]]\n' + b.text);
+        }
+      } else if (b.kind === 'think') {
+        if (b.text) out.push('[[rr:think]]\n' + b.text);
+      } else if (b.kind === 'tool') {
+        out.push(`[[rr:tool ${b.name}]]\n` + b.text);
+      } else if (b.kind === 'toolresult') {
+        if (out.length && out[out.length - 1].startsWith('[[rr:tool')) out[out.length - 1] += '\n' + b.text;
+        else if (b.text) out.push('[[rr:tool]]\n' + b.text);
+      }
     }
   }
   let md = out.join('\n\n');
-  if (md.length > TEXT_CAP) md = '(earlier conversation trimmed)\n\n' + md.slice(-TEXT_CAP);
+  if (md.length > TEXT_CAP) {
+    const turns = md.split(/\n\n(?=\[\[rr:)/);
+    while (turns.length > 1 && turns.join('\n\n').length > TEXT_CAP) turns.shift();
+    md = '(earlier turns trimmed)\n\n' + turns.join('\n\n');
+  }
   return { md, firstPrompt };
 }
 
@@ -110,7 +173,7 @@ export function compileTranscript(jsonl) {
 export function buildPayload({ jsonl, sessionId, group, sourceType, title }) {
   if (isBackground(jsonl)) return null;
   const { md, firstPrompt } = compileTranscript(jsonl);
-  if (md.split(/\s+/).length < 8) return null;
+  if (md.replace(/\[\[rr:[^\]]*\]\]/g, '').split(/\s+/).filter(Boolean).length < 8) return null;
   let quick = title;
   if (!quick) {
     const base = (sessionSummary(jsonl) || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
