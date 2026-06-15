@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     if (req.query?.id) {
       const items = await getDoc(KEY_U, []);
       const item = items.find((it) => it.id === req.query.id);
-      if (!item) return res.status(404).json({ error: 'not found' });
+      if (!item || item.deletedAt) return res.status(404).json({ error: 'not found' }); // deleted = restore first
       const text = await getBody(uid, item.id, item.bodyUrl);
       return res.status(200).json({ item, text });
     }
