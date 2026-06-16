@@ -4,6 +4,19 @@ A pin-to-corner RSVP (Rapid Serial Visual Presentation) reading panel.
 Highlight text anywhere → it lands in a synced backlog → read it one word
 at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
 
+## NEVER claim it works without a screenshot (non-negotiable)
+
+Do **not** assert anything about how this app looks or behaves without proof you
+just produced. You have a real headless browser harness (`tools/harness/observe.mjs`
+→ screenshots you Read back). Use it. "It works", "it renders X", "fixed", "your
+turn is right-justified" — every such claim about UI or behavior needs a harness
+screenshot (or a test you actually ran) from THIS change, and ideally seeded with
+data that matches the user's real case, not a synthetic stand-in you assume is
+equivalent. The maintainer only sees test/prod, never your reasoning; an unproven
+claim that turns out false costs far more than saying "unverified — here's how I'll
+check." If you cannot reach the data (egress blocks test/prod), say so and ask the
+user for the screenshot or the raw source rather than guessing.
+
 ## Architecture (keep it this small)
 
 - `public/` — the entire frontend. Vanilla JS ES modules, no framework, no build step.

@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
 // app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
 // is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
-const BUILD = '20260616e';
+const BUILD = '20260616f';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -932,8 +932,8 @@ function buildTranscript() {
     if (hasRoles && sec.role !== turnRole) {
       turnRole = sec.role;
       const th = sec.role ? (theme[sec.role] || {}) : null;
-      if (th && th.show === false) {
-        turn = null;
+      if (sec.role === 'think' || (th && th.show === false)) {
+        turn = null; // thinking is removed from the transcript entirely
       } else {
         turn = document.createElement('div');
         turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
@@ -951,12 +951,13 @@ function buildTranscript() {
     }
     if (!turn) return; // hidden role
 
-    // tool calls + thinking: collapsed, read from raw (they carry no RSVP tokens)
-    if (sec.role === 'tool' || sec.role === 'think') {
+    // tool calls stay, collapsed, but never truncate the text (thinking turns are
+    // dropped entirely above, by setting their turn to null)
+    if (sec.role === 'tool') {
       const det = document.createElement('details');
-      det.open = (theme[sec.role] || {}).collapsed === false;
+      det.open = (theme.tool || {}).collapsed === false;
       const sum = document.createElement('summary');
-      sum.textContent = (sec.role === 'tool' ? '⚙ ' : '◇ ') + (sec.type === 'code' ? 'code' : (sec.text || '').slice(0, 64));
+      sum.textContent = '⚙ ' + (sec.type === 'code' ? 'code' : (sec.text || 'tool').split('\n')[0]);
       const pre = document.createElement('pre');
       pre.textContent = sec.type === 'code' ? stripFence(sec.raw) : (sec.raw || sec.text || '');
       det.append(sum, pre);

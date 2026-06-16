@@ -32,6 +32,8 @@ const VIEWPORTS = {
 // numbered list + a code fence) so we can see exactly how faithfully it mirrors.
 const AGENT_BODY = `[[rr:you]]
 Give me the overnight overview.
+[[rr:think]]
+Let me ground myself in what actually changed before I summarize, so I do not overstate anything in the recap.
 [[rr:claude]]
 ## Overnight overview — everything done
 
@@ -61,6 +63,12 @@ const VoiceGain = 4; // was 2 — doubled at the PCM level
 1. Order reliability + verbose actions.
 2. Speaking indicator (world-space dot).
 3. Prompt hardening, lossless.
+[[rr:tool Bash]]
+git log --oneline -5 && npm test --silent
+[[rr:you]]
+one thing before i sleep - can you compile this into a single portable document i can read on my phone tonight, both a markdown file and a docx?
+[[rr:claude]]
+Love these answers. For bedtime reading I am compiling everything into one document, as both a GitHub-readable Markdown file and a portable .docx.
 `;
 
 const NEWS_BODY = `# GLP-1 Therapies Silence Spontaneous Physical Activity
@@ -142,10 +150,14 @@ async function observe(browser) {
     if (opened) {
       writeFileSync(join(SHOTS, `${vp}-transcript.html`),
         await page.evaluate(() => document.getElementById('transcript')?.innerHTML || '(none)'));
-      // click a word partway down → seek → confirm the "you are here" highlight is findable + centered
-      await page.evaluate(() => { const s = [...document.querySelectorAll('#transcript [data-i]')]; const m = s[Math.floor(s.length * 0.6)]; if (m) m.click(); });
-      await sleep(400);
-      await shoot(page, `${vp}-02b-nowmark`);
+      // scroll to the user's "one thing before i sleep" turn → verify it is FULL +
+      // right-aligned + accent-tinted, and that thinking turns are gone
+      await page.evaluate(() => {
+        const y = [...document.querySelectorAll('#transcript .turn.you, #transcript p.you')].find((e) => /before i sleep/i.test(e.textContent));
+        (y || document.querySelector('#transcript .turn.you'))?.scrollIntoView({ block: 'center' });
+      });
+      await sleep(300);
+      await shoot(page, `${vp}-02b-youturn`);
     }
     await page.close();
   }
