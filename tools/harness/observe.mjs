@@ -256,9 +256,64 @@ async function verifyB(browser) {
   return r;
 }
 
+// build a minimal STORED (uncompressed) zip the EPUB/office unzip can read, so
+// we can make a real .docx fixture without any zip dependency
+function makeZip(files) {
+  const local = [], central = [];
+  let offset = 0;
+  for (const f of files) {
+    const name = Buffer.from(f.name, 'utf8');
+    const data = Buffer.from(f.data, 'utf8');
+    const lh = Buffer.alloc(30);
+    lh.writeUInt32LE(0x04034b50, 0); lh.writeUInt16LE(20, 4);
+    lh.writeUInt32LE(data.length, 18); lh.writeUInt32LE(data.length, 22);
+    lh.writeUInt16LE(name.length, 26);
+    local.push(lh, name, data);
+    const ch = Buffer.alloc(46);
+    ch.writeUInt32LE(0x02014b50, 0); ch.writeUInt16LE(20, 6);
+    ch.writeUInt32LE(data.length, 20); ch.writeUInt32LE(data.length, 24);
+    ch.writeUInt16LE(name.length, 28); ch.writeUInt32LE(offset, 42);
+    central.push(ch, name);
+    offset += lh.length + name.length + data.length;
+  }
+  const cd = Buffer.concat(central);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8); eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(cd.length, 12); eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...local, cd, eocd]);
+}
+
+function writeFixtures() {
+  writeFileSync('/tmp/harness-memo.txt', 'A plain text note loaded from disk, to read later.');
+  const docXml = '<?xml version="1.0"?><w:document xmlns:w="x"><w:body>'
+    + '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Harness DOCX</w:t></w:r></w:p>'
+    + '<w:p><w:r><w:t>Loaded from a real .docx through the file picker.</w:t></w:r></w:p>'
+    + '</w:body></w:document>';
+  writeFileSync('/tmp/harness-report.docx', makeZip([{ name: 'word/document.xml', data: docXml }]));
+}
+
+// ---------- Phase 2: verify the universal file loader (desktop) ----------
+async function verifyFiles(browser) {
+  const page = await openApp(browser, 'desktop');
+  const r = {};
+  for (const [path, needle, key] of [['/tmp/harness-report.docx', 'harness-report', 'docx'], ['/tmp/harness-memo.txt', 'harness-memo', 'txt']]) {
+    try {
+      await (await page.$('#add-file')).uploadFile(path);
+      await sleep(900);
+      r[key] = (await colTitles(page, 'general')).some((t) => t.includes(needle));
+    } catch (e) { r[key] = 'ERR ' + e.message; }
+  }
+  await shoot(page, 'desktop-07-files');
+  console.log('\nFile loader:', JSON.stringify(r));
+  await page.close();
+  return r;
+}
+
 async function run() {
   rmSync(SHOTS, { recursive: true, force: true });
   mkdirSync(SHOTS, { recursive: true });
+  writeFixtures();
   const server = spawn('node', ['dev-server.mjs'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
   try {
     await waitForServer();
@@ -267,6 +322,7 @@ async function run() {
     try {
       await observe(browser);
       await verifyB(browser);
+      await verifyFiles(browser);
     } finally {
       await browser.close();
     }

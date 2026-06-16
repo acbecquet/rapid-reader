@@ -3,8 +3,8 @@
 // Bump CACHE (and the ?v= on app.js/style.css in index.html) on every deploy so
 // a new service worker installs, the old precache is dropped, and clients get
 // the fresh shell instead of a stale one.
-const CACHE = 'rr-v6';
-const SHELL = ['/', '/app.js?v=20260616c', '/rsvp.js', '/parse.js', '/epub.js', '/icons.js', '/style.css?v=20260616c', '/manifest.webmanifest'];
+const CACHE = 'rr-v7';
+const SHELL = ['/', '/app.js?v=20260616d', '/rsvp.js', '/parse.js', '/epub.js', '/icons.js', '/style.css?v=20260616d', '/manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));

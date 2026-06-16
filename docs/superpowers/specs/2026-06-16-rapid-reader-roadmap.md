@@ -120,6 +120,11 @@ buildless rule.
 Success: choose or drag a file of each shipped type and it lands in the backlog as
 readable text (epub as a book).
 
+Status: **txt / md / docx / pptx / epub shipped + harness-verified** (build
+20260616d). docx/pptx reuse the EPUB `unzip` (public/office.js, pure XML→text,
+unit-tested); the ＋ modal has a "Load file…" button. **PDF is the next pass** (you
+chose ship-four-now); it will get the CDN-vs-server decision then.
+
 ### Phase 3 — Fetch / freshest ingestor data
 Goal: a fetch control to the right of the Telegram toggle that pulls the latest
 from the active ingestors on demand; auto-updating as the real goal.

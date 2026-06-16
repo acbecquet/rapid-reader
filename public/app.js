@@ -1,6 +1,7 @@
 import * as R from './rsvp.js';
 import * as P from './parse.js';
 import * as E from './epub.js';
+import * as O from './office.js';
 import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
@@ -8,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
 // app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
 // is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
-const BUILD = '20260616c';
+const BUILD = '20260616d';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -1828,12 +1829,39 @@ $('add-save').onclick = async () => {
   }
 };
 
+// ---------- universal ＋ file loader (txt / md / docx / pptx / epub; pdf next) ----------
+// The ＋ "Load file" button and the 📖 button both feed files in here.
+$('add-file-btn').onclick = () => $('add-file').click();
+$('add-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); };
+
+async function loadFile(file) {
+  const name = file.name || 'file';
+  const ext = (name.match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+  const title = name.replace(/\.[a-z0-9]+$/i, '').trim() || 'Document';
+  if (ext === 'epub') return loadEpub(file); // route into the book flow (redundant with 📖)
+  if (ext === 'pdf') return toast('PDF support is coming in the next update');
+  try {
+    let text;
+    if (ext === 'docx') { toast('Reading document…'); text = await O.docxText(await file.arrayBuffer()); }
+    else if (ext === 'pptx') { toast('Reading slides…'); text = await O.pptxText(await file.arrayBuffer()); }
+    else if (['txt', 'md', 'markdown', 'text'].includes(ext) || file.type.startsWith('text/')) { text = await file.text(); }
+    else return toast('Unsupported file — try .txt, .md, .docx, .pptx, .pdf, or .epub');
+    text = (text || '').trim();
+    if (!text) return toast('That file had no readable text');
+    await api('POST', 'items', { body: { text, title, sourceType: 'docs' } });
+    $('add').hidden = true;
+    toast(`Added — ${title}`);
+    await refresh();
+  } catch (err) {
+    toast('Could not read that file — ' + (err.message || 'unsupported'));
+  }
+}
+
 // ---------- 📖 EPUB (parsed locally, stored as a 'book' item) ----------
 $('epub-btn').onclick = () => $('add-epub').click();
-$('add-epub').onchange = async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
+$('add-epub').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) loadEpub(f); };
+
+async function loadEpub(file) {
   toast('Reading book…');
   try {
     const book = await E.parseEpub(await file.arrayBuffer());
@@ -1857,7 +1885,7 @@ $('add-epub').onchange = async (e) => {
   } catch (err) {
     toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
-};
+}
 
 // ---------- books: number every chapter once, then leave it alone ----------
 // Book chapters are numbers only — "Chapter N" — never descriptions (the EPUB's
