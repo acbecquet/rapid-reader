@@ -22,24 +22,37 @@ const y = 2;
 
 > Check the refresh-token branch carefully.`;
 
-test('parseStructure identifies headings, paragraphs, bullets, tables, code', () => {
+test('parseStructure identifies headings, paragraphs, list items, tables, code', () => {
   const s = parseStructure(SAMPLE);
   assert.deepEqual(s.map((x) => x.type), [
-    'heading', 'paragraph', 'heading', 'bullets', 'table', 'code', 'quote',
+    'heading', 'paragraph', 'heading', 'item', 'item', 'table', 'code', 'quote',
   ]);
   assert.equal(s[0].title, 'Change Summary');
   assert.equal(s[2].title, 'Files Changed');
 });
 
-test('bullets become sentence-terminated chunks', () => {
+test('list items become individual structured sections (not one flattened blob)', () => {
   const s = parseStructure('- first point\n- second point.');
-  assert.equal(s[0].type, 'bullets');
-  assert.equal(s[0].text, 'first point. second point.');
+  assert.deepEqual(s.map((x) => x.type), ['item', 'item']);
+  assert.equal(s[0].text, 'first point');
+  assert.equal(s[1].text, 'second point.');
+  assert.equal(s[0].ordered, false);
 });
 
-test('multi-line bullet continuation folds into the bullet', () => {
+test('a wrapped list item folds its continuation line in', () => {
   const s = parseStructure('- a point that\n  continues here\n- next');
-  assert.equal(s[0].text, 'a point that continues here. next.');
+  assert.deepEqual(s.map((x) => x.type), ['item', 'item']);
+  assert.equal(s[0].text, 'a point that continues here');
+  assert.equal(s[1].text, 'next');
+});
+
+test('ordered + nested list items keep their marker and indent', () => {
+  const s = parseStructure('1. first\n2. second\n   - nested bullet');
+  assert.deepEqual(s.map((x) => x.type), ['item', 'item', 'item']);
+  assert.equal(s[0].ordered, true);
+  assert.equal(s[0].marker, '1.');
+  assert.equal(s[2].ordered, false);
+  assert.ok(s[2].indent >= 2); // the nested bullet is indented under the list
 });
 
 test('tables turn into readable sentences', () => {

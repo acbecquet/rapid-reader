@@ -365,6 +365,12 @@ body {
   word-break: break-all;
 }
 #transcript p.h { color: var(--reader-fg); font-weight: 600; margin-top: 14px; }
+/* faithful list mirroring: a marker (• or the number) + a hanging, indented body
+   so numbered/bulleted/nested lists read like the source instead of a run-on */
+#transcript .li { display: flex; align-items: baseline; gap: .5em; margin: 3px 0; }
+#transcript .li-mark { flex: none; min-width: 1.1em; color: var(--dim); cursor: default; font-variant-numeric: tabular-nums; }
+#transcript .li-mark:hover { background: none; color: var(--dim); }
+#transcript .li-body { flex: 1; min-width: 0; }
 /* agent/chat transcript: your prompts right-aligned + labelled, like a chat */
 #transcript p.you { text-align: right; color: var(--reader-fg); }
 #transcript p.you .you-label {

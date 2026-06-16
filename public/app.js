@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
 // app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
 // is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
-const BUILD = '20260616a';
+const BUILD = '20260616b';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -927,6 +927,28 @@ function buildTranscript() {
       return;
     }
     if (!bySec[idx].length) return;
+
+    // list items mirror the source: a marker (• or the number) + indent for
+    // nesting, with the words still tokenized for RSVP highlight + click-to-seek
+    if (sec.type === 'item') {
+      const li = document.createElement('div');
+      li.className = 'li';
+      if (sec.indent) li.style.marginLeft = (sec.indent * 0.8) + 'em';
+      const mark = document.createElement('span');
+      mark.className = 'li-mark';
+      mark.textContent = sec.ordered ? sec.marker : '•';
+      const body = document.createElement('div');
+      body.className = 'li-body';
+      for (const [t, i] of bySec[idx]) {
+        const s = document.createElement('span');
+        s.textContent = t.w; s.dataset.i = i;
+        if (t.link) s.classList.add('link');
+        body.append(s, ' ');
+      }
+      li.append(mark, body);
+      turn.append(li);
+      return;
+    }
 
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';

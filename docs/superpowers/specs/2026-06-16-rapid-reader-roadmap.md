@@ -79,10 +79,10 @@ The transcript reuses that parse, so numbering, bullets, nesting, and inline
 own faithful render path; keep the flattened stream for RSVP only.
 
 Sub-phases, each shipped to test:
-- [ ] **1a — Structure.** Parser retains list items (their marker/number and
+- [x] **1a — Structure.** Parser retains list items (their marker/number and
       nesting depth) instead of flattening; transcript renders real nested
       numbered/bulleted lists; headings + fenced code blocks kept. Biggest
-      readability win.
+      readability win. (Done + harness-verified; deployed as build 20260616b.)
 - [ ] **1b — Inline.** Render inline `code` (monospace) and bold/italic inside
       text, mapped over the RSVP word spans.
 - [ ] **1c — Tables.** Render tables as tables in the transcript (still flattened
