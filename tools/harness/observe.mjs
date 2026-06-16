@@ -89,6 +89,9 @@ async function seed() {
     method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
   });
   await post({ sourceType: 'claude_code', sessionId: 'harness:overnight', text: AGENT_BODY });
+  // a legacy, marker-LESS agent body (user prompt as a '>' quote) to confirm the
+  // app still distinguishes your turn without [[rr:…]] sentinels
+  await post({ sourceType: 'claude_code', sessionId: 'harness:legacy', text: '> please refactor the auth module and add tests\n\nSure. I read the code, patched the token path, and added coverage.' });
   await post({ sourceType: 'article', title: 'GLP-1 Therapies Silence Spontaneous Physical Activity', text: NEWS_BODY });
   for (const n of NOTES) await post({ sourceType: 'manual', text: n + ' — a short note to read later.' });
 }
@@ -156,6 +159,13 @@ async function verifyB(browser) {
   // PREVIEW — the agent item shows a dim second line
   r.preview = await page.evaluate(() =>
     !!document.querySelector('.col[data-col="agents"] .item .item-pv')?.textContent.trim());
+
+  // LEGACY "you" — a marker-less '>' quote body still styles your turn right/red
+  try {
+    await page.evaluate(() => { const t = [...document.querySelectorAll('.item .t')].find((e) => /refactor the auth/i.test(e.textContent)); t?.closest('.item').click(); });
+    await sleep(500);
+    r.legacyYou = await page.evaluate(() => !!document.querySelector('#transcript p.you'));
+  } catch (e) { r.legacyYou = 'ERR ' + e.message; }
 
   // RENAME — double-click a title, select-all is automatic, type, Enter
   try {
