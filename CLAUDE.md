@@ -118,3 +118,12 @@ Hard-won, from a real mistake — do not repeat it:
 - Stats stay aggregate-only: no captured text in `rr:stats`, ever.
 - New env: `BLOB_READ_WRITE_TOKEN` (Vercel Blob), `TELEGRAM_WEBHOOK_SECRET`,
   `EMAIL_WEBHOOK_SECRET`. `/api/health` reports whether Redis/Blob are wired.
+- **The maintainer only ever tests on `test` and `prod` — nowhere else.**
+  Verification happens on **test.acb-apps.com** (the `staging` branch's Vercel
+  deploy) and, once promoted, **prod**. They will *not* open Vercel per-PR preview
+  URLs or any other branch/environment — in their words, "anywhere else, I can't
+  see it and I won't look." So when you build something for them to try, get it
+  onto **test**: point the `staging` branch at the commit you want live (a
+  force-push is fine — `staging` is just a deploy pointer, and Vercel auto-deploys
+  it to test.acb-apps.com). A preview URL is never enough; deploy to test or it
+  won't be seen.
