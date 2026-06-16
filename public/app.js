@@ -5,6 +5,11 @@ import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 
+// Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
+// app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
+// is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
+const BUILD = '20260616a';
+
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
 const isMobile = () => matchMedia('(max-width: 640px)').matches;
@@ -2141,6 +2146,8 @@ async function intakeShared() {
   }
 }
 applySettings();
+console.log('Rapid Reader build', BUILD);
+{ const bt = $('build-tag'); if (bt) bt.textContent = 'build ' + BUILD; }
 fillSettingsForm();
 updateConnectLabel();
 initAuth();
