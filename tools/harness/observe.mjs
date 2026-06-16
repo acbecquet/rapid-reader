@@ -45,7 +45,12 @@ You asked me to commit the pending repo work first. I split it cleanly:
 
 ### 1. Issue — volume doubled
 
-Root cause: TtsVolume and RadioVolume are Clamp01'd, so they cap at 1.0.
+**Root cause:** \`TtsVolume\` and \`RadioVolume\` are \`Clamp01\`'d, so they cap at 1.0.
+
+| Lever | Before | After |
+|---|---|---|
+| VoiceGain | 2 | 4 |
+| RadioGain | 1 | 2 |
 
 \`\`\`js
 const VoiceGain = 4; // was 2 — doubled at the PCM level

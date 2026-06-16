@@ -371,6 +371,13 @@ body {
 #transcript .li-mark { flex: none; min-width: 1.1em; color: var(--dim); cursor: default; font-variant-numeric: tabular-nums; }
 #transcript .li-mark:hover { background: none; color: var(--dim); }
 #transcript .li-body { flex: 1; min-width: 0; }
+/* inline code + bold, mirrored from the source */
+#transcript span.code { font-family: 'SF Mono', Consolas, ui-monospace, monospace; font-size: .92em; background: color-mix(in srgb, var(--reader-fg) 9%, transparent); border-radius: 4px; padding: 0 .3em; }
+#transcript span.b { font-weight: 600; color: var(--reader-fg); }
+/* tables, mirrored from the source */
+#transcript table { border-collapse: collapse; margin: 8px 0; font-size: .95em; }
+#transcript th, #transcript td { border: 1px solid var(--line); padding: 3px 9px; text-align: left; }
+#transcript th { color: var(--reader-fg); font-weight: 600; }
 /* agent/chat transcript: your prompts right-aligned + labelled, like a chat */
 #transcript p.you { text-align: right; color: var(--reader-fg); }
 #transcript p.you .you-label {

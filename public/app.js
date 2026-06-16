@@ -8,7 +8,7 @@ const $ = (id) => document.getElementById(id);
 // Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
 // app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
 // is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
-const BUILD = '20260616b';
+const BUILD = '20260616c';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -871,6 +871,50 @@ function showToken() {
 // the player there) without losing your place.
 let nowSpan = null;
 
+// Render a section's word tokens as clickable spans, applying inline `code` and
+// **bold** that may span one or more tokens (state carried across the run). Each
+// word keeps its data-i so RSVP highlight + click-to-seek still work.
+function appendWords(parent, entries) {
+  const st = { code: false, bold: false };
+  for (const [t, i] of entries) {
+    let w = t.w;
+    const bold = st.bold || w.includes('**');
+    if ((w.match(/\*\*/g) || []).length % 2) st.bold = !st.bold;
+    const code = st.code || w.includes('`');
+    if ((w.match(/`/g) || []).length % 2) st.code = !st.code;
+    w = w.replace(/\*\*/g, '').replace(/`/g, '');
+    const s = document.createElement('span');
+    s.textContent = w;
+    s.dataset.i = i;
+    if (t.link) s.classList.add('link');
+    if (code) s.classList.add('code');
+    if (bold) s.classList.add('b');
+    parent.append(s, ' ');
+  }
+}
+
+// Build a real <table> from the raw markdown rows (the RSVP stream still reads
+// the flattened sentence form; the transcript shows the table to mirror the source).
+function tableEl(raw) {
+  const tbl = document.createElement('table');
+  let header = true;
+  for (const line of (raw || '').split('\n')) {
+    if (!line.includes('|')) continue;
+    if (/^\s*\|?[\s:|-]+\|?\s*$/.test(line)) { header = false; continue; } // separator row
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells[0] === '') cells.shift();
+    if (cells.length && cells[cells.length - 1] === '') cells.pop();
+    const tr = document.createElement('tr');
+    for (const c of cells) {
+      const cell = document.createElement(header ? 'th' : 'td');
+      cell.textContent = c;
+      tr.append(cell);
+    }
+    tbl.append(tr);
+  }
+  return tbl;
+}
+
 function buildTranscript() {
   const box = $('transcript');
   box.textContent = '';
@@ -939,14 +983,17 @@ function buildTranscript() {
       mark.textContent = sec.ordered ? sec.marker : '•';
       const body = document.createElement('div');
       body.className = 'li-body';
-      for (const [t, i] of bySec[idx]) {
-        const s = document.createElement('span');
-        s.textContent = t.w; s.dataset.i = i;
-        if (t.link) s.classList.add('link');
-        body.append(s, ' ');
-      }
+      appendWords(body, bySec[idx]);
       li.append(mark, body);
       turn.append(li);
+      return;
+    }
+
+    // tables mirror the source as a real table (read as sentences in RSVP)
+    if (sec.type === 'table') {
+      const tbl = tableEl(sec.raw);
+      if (bySec[idx][0]) tbl.dataset.i = bySec[idx][0][1];
+      turn.append(tbl);
       return;
     }
 
@@ -964,13 +1011,7 @@ function buildTranscript() {
         para.className = 'quote';
       }
     }
-    for (const [t, i] of bySec[idx]) {
-      const s = document.createElement('span');
-      s.textContent = t.w;
-      s.dataset.i = i;
-      if (t.link) s.classList.add('link');
-      para.append(s, ' ');
-    }
+    appendWords(para, bySec[idx]);
     turn.append(para);
   });
 

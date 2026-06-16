@@ -83,10 +83,10 @@ Sub-phases, each shipped to test:
       nesting depth) instead of flattening; transcript renders real nested
       numbered/bulleted lists; headings + fenced code blocks kept. Biggest
       readability win. (Done + harness-verified; deployed as build 20260616b.)
-- [ ] **1b — Inline.** Render inline `code` (monospace) and bold/italic inside
-      text, mapped over the RSVP word spans.
-- [ ] **1c — Tables.** Render tables as tables in the transcript (still flattened
-      to sentences for the RSVP stream).
+- [x] **1b — Inline.** Inline `code` (monospace) and **bold** render across token
+      runs, mapped over the RSVP word spans. (Done + harness-verified.)
+- [x] **1c — Tables.** Tables render as real tables in the transcript (still
+      flattened to sentences for the RSVP stream). (Done + harness-verified.)
 
 Approach: enrich the pure parser to keep structure (unit-tested in Node); add a
 transcript renderer in `app.js` that mirrors it; the RSVP token stream is
