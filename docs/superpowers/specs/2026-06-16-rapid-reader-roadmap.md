@@ -37,6 +37,13 @@ else.**
   guarded action). Run `/ponytail-review` on each phase's diff; its minimization
   lens (YAGNI, native/stdlib first, least code) is the formal version of this
   repo's "simplicity first" rule, and gates every phase.
+- **Live-test fixes (build 20260616e):** (1) books — a re-upload now upserts in
+  place instead of making a second copy (stable id from title+author), so each
+  book is one clean group; (2) agent title now prefers Claude's **native session
+  summary** (`transcript.mjs` already parsed it; now used) — needs a local hook
+  update + re-sync to apply to your sessions; the frontend no longer overwrites a
+  good title; (3) the transcript's current-word highlight is bold and self-centres
+  so "where am I" is obvious, and it follows your reading position.
 - **Harness finding for Phase 0:** a *title-less* agent capture renders the raw
   `[[rr:you]]` sentinel as its title (`quickTitle` doesn't strip sentinels, and the
   idle-gated re-title hasn't run yet). Strip sentinels at ingest. Found by the

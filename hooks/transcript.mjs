@@ -187,8 +187,9 @@ export function buildPayload({ jsonl, sessionId, group, sourceType, title }) {
   if (isBackground(jsonl)) return null;
   const { md, firstPrompt, lastPrompt, lastClaude } = compileTranscript(jsonl);
   if (md.replace(/\[\[rr:[^\]]*\]\]/g, '').split(/\s+/).filter(Boolean).length < 8) return null;
-  // Title = your most recent prompt (strictly your words — no summary, no LLM).
-  const base = (title || lastPrompt || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
+  // Title = the session's own summary (Claude's native sidebar title) when it
+  // exists, else your most recent prompt. A sync-provided `title` still wins.
+  const base = (title || sessionSummary(jsonl) || lastPrompt || firstPrompt || 'session').replace(/\s+/g, ' ').trim();
   const words = base.split(' ');
   const quick = words.slice(0, 12).join(' ').slice(0, 90) + (words.length > 12 ? '…' : '');
   const preview = (lastClaude || '').replace(/\s+/g, ' ').trim().slice(0, 140); // Claude's latest → preview line

@@ -51,6 +51,16 @@ test('buildPayload: title is your most recent prompt, group from project folder'
   ])), null);
 });
 
+test('buildPayload: Claude session summary wins the title when present', () => {
+  const withSummary = jl([
+    { type: 'summary', summary: 'Refactor the auth module and add tests' },
+    { type: 'user', message: { role: 'user', content: 'please refactor auth and add coverage for the token path' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Done — refactored auth and added tests across the token path.' }] } },
+  ]);
+  const p = buildPayload({ session_id: 'sum-1', cwd: '/a/proj' }, withSummary);
+  assert.equal(p.title, 'Refactor the auth module and add tests'); // the native summary, not the prompt
+});
+
 function call(method, body, query) {
   return new Promise((resolve) => {
     const req = { method, headers: {}, body: body || {}, query: query || {} };

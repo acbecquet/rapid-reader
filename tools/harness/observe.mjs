@@ -136,8 +136,14 @@ async function observe(browser) {
     });
     await sleep(700);
     await shoot(page, `${vp}-02-transcript`);
-    if (opened) writeFileSync(join(SHOTS, `${vp}-transcript.html`),
-      await page.evaluate(() => document.getElementById('transcript')?.innerHTML || '(none)'));
+    if (opened) {
+      writeFileSync(join(SHOTS, `${vp}-transcript.html`),
+        await page.evaluate(() => document.getElementById('transcript')?.innerHTML || '(none)'));
+      // click a word partway down → seek → confirm the "you are here" highlight is findable + centered
+      await page.evaluate(() => { const s = [...document.querySelectorAll('#transcript [data-i]')]; const m = s[Math.floor(s.length * 0.6)]; if (m) m.click(); });
+      await sleep(400);
+      await shoot(page, `${vp}-02b-nowmark`);
+    }
     await page.close();
   }
 }

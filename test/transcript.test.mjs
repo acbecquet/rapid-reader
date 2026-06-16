@@ -115,7 +115,7 @@ test('isBackground filters sub-agents, observers, and observer cwds — keeps re
   assert.equal(isBackground(observerCwd), true);
 });
 
-test('buildPayload drops background sessions; title is your most recent prompt', () => {
+test('buildPayload drops background sessions; title prefers the Claude summary, else your prompt', () => {
   const sidechain = jl([
     { type: 'user', isSidechain: true, message: { role: 'user', content: 'review this' } },
     { type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'done with the review of everything' }] } },
@@ -128,7 +128,14 @@ test('buildPayload drops background sessions; title is your most recent prompt',
     { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Found a null deref; patched and tested.' }] } },
   ]);
   const p = buildPayload({ jsonl: session, sessionId: 'claude:y', group: 'Easy Red 2', sourceType: 'claude_code' });
-  assert.equal(p.title, 'the crew controller crashes on spawn, please investigate and fix it'); // your prompt, not the summary
+  assert.equal(p.title, 'ER2 vehicle crew control fix'); // Claude's native summary wins (the comprehensible sidebar title)
+
+  // no summary entry → fall back to your most recent prompt
+  const noSummary = jl([
+    { type: 'user', userType: 'external', message: { role: 'user', content: 'the crew controller crashes on spawn, please investigate' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Found a null deref; patched and tested.' }] } },
+  ]);
+  assert.equal(buildPayload({ jsonl: noSummary, sessionId: 'claude:z' }).title, 'the crew controller crashes on spawn, please investigate');
 });
 
 test('buildPayload previews Claude\'s latest turn (title = your prompt, preview = where we are)', () => {

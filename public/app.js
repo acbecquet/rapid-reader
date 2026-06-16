@@ -9,7 +9,7 @@ const $ = (id) => document.getElementById(id);
 // Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
 // app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
 // is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
-const BUILD = '20260616d';
+const BUILD = '20260616e';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -125,10 +125,11 @@ let agentHealCount = 0;
 async function healAgentTitles() {
   if (agentHealCount >= 40) return;
   const idle = Date.now() - 120000;
-  // title re-derivation stays gated (idle + un-pinned) so we never fight an
-  // actively-syncing session's own title; the preview line has no such risk, so
-  // any agent item still missing one is a candidate (incl. pinned/recent).
-  const titleable = (it) => !it.titlePinned && (it.createdAt || 0) < idle;
+  // Only re-derive a title that actually looks broken — never overwrite a good
+  // one (the hook's Claude summary, or a clean prompt). Idle + un-pinned still
+  // gates it so we don't fight an actively-syncing session. Previews have no such
+  // risk, so any agent item still missing one is a candidate (incl. pinned/recent).
+  const titleable = (it) => !it.titlePinned && (it.createdAt || 0) < idle && looksBadTitle(it.title);
   const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.bookId
     && !agentHealed.has(it.id) && (!it.preview || titleable(it)));
   let changed = false;
@@ -1084,13 +1085,14 @@ function markTranscript() {
   nowSpan?.classList.remove('now');
   nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
   if (nowSpan) nowSpan.classList.add('now');
-  // agent chats read like a messenger: newest pinned to the bottom — unless
-  // you're actively RSVP-playing, then the transcript follows the word
-  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
+  // a freshly-opened agent chat shows its latest turn (messenger style); but the
+  // moment you're reading (playing, or moved off the first word) the transcript
+  // follows the current word so you can always see where you are
+  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing && cur.i === 0) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
   } else if (nowSpan) {
-    nowSpan.scrollIntoView({ block: 'nearest' });
+    nowSpan.scrollIntoView({ block: 'center' });
   }
 }
 
@@ -1865,10 +1867,11 @@ async function loadEpub(file) {
   toast('Reading book…');
   try {
     const book = await E.parseEpub(await file.arrayBuffer());
-    const bookId = crypto.randomUUID();
     const group = book.title + (book.author ? ' — ' + book.author : '');
-    // one item per chapter, grouped under the book; sessionId makes a
-    // re-upload upsert in place instead of duplicating.
+    // a STABLE id per book (title+author) so re-uploading the same book upserts
+    // its chapters in place instead of making a second copy in the same group
+    const slug = group.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+    const bookId = 'book-' + (slug || crypto.randomUUID());
     for (let i = 0; i < book.chapters.length; i++) {
       const ch = book.chapters[i];
       await api('POST', 'items', {

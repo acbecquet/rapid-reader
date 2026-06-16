@@ -354,9 +354,12 @@ body {
 #transcript p { margin: 0 0 10px; }
 #transcript span { cursor: pointer; border-radius: 3px; }
 #transcript span:hover { color: var(--reader-fg); background: #22222b55; }
+/* the word the reader is on — strong enough to find your place instantly */
 #transcript span.now {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-  color: var(--reader-fg);
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent);
+  border-radius: 3px;
 }
 #transcript span.link {
   text-decoration: underline;
