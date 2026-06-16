@@ -14,7 +14,12 @@ export const SOURCE_TYPES = [
 ];
 
 export function quickTitle(text) {
-  const words = text.replace(/[#*`>|_~\-]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
+  text = String(text || '');
+  // Agent transcripts carry [[rr:you|claude|…]] turn markers. Title from the first
+  // user turn (your prompt), and never leak a raw sentinel into the title.
+  const you = text.match(/\[\[rr:you\b[^\]]*\]\]\s*([\s\S]*?)(?:\n\s*\[\[rr:|$)/i);
+  if (you && you[1].trim()) text = you[1];
+  const words = text.replace(/\[\[rr:[^\]]*\]\]/g, ' ').replace(/[#*`>|_~\-]+/g, ' ').replace(/\s+/g, ' ').trim().split(' ');
   return words.slice(0, 8).join(' ').slice(0, 90) + (words.length > 8 ? '…' : '');
 }
 
