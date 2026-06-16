@@ -1493,7 +1493,9 @@ $('wpm-now').onclick = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.matches('input, textarea, select')) return;
+  // never hijack keys while typing in a field or an inline rename — otherwise
+  // Space toggles the player (and is swallowed), arrows seek, etc.
+  if (e.target.matches('input, textarea, select') || e.target.isContentEditable) return;
   const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
