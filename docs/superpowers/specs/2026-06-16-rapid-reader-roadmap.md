@@ -21,6 +21,26 @@ else.**
   the service-worker cache is versioned (`rr-v4`), and a visible **build stamp**
   (Settings footer + console) tells us exactly what test is serving. Bump the
   stamp + the `?v=` + the sw `CACHE` together on every deploy.
+- **Self-feedback harness (built + validated):** `tools/harness/observe.mjs` drives
+  the real app in a headless browser at desktop **and** mobile viewports, seeds
+  representative data, runs input scenarios, and writes screenshots + the
+  transcript DOM to `tools/harness/shots/`. This is how we iterate to the exact
+  described behaviour with no human in the loop ("ralph" style). Sandbox-only and
+  kept out of `package.json` (zero deploy impact): one-time
+  `npm i --no-save puppeteer-core @sparticuz/chromium@119.0.2`, then
+  `node tools/harness/observe.mjs`. It uses the npm-bundled serverless Chromium
+  because this environment's egress allowlist blocks Playwright's browser CDN.
+- **Code-review gate: ponytail** (`DietrichGebert/ponytail`). Install it once in
+  interactive Claude Code (`/plugin marketplace add DietrichGebert/ponytail` then
+  `/plugin install ponytail@ponytail`); committing it into the agent's startup
+  config is intentionally not automated (loading external plugin code is a
+  guarded action). Run `/ponytail-review` on each phase's diff; its minimization
+  lens (YAGNI, native/stdlib first, least code) is the formal version of this
+  repo's "simplicity first" rule, and gates every phase.
+- **Harness finding for Phase 0:** a *title-less* agent capture renders the raw
+  `[[rr:you]]` sentinel as its title (`quickTitle` doesn't strip sentinels, and the
+  idle-gated re-title hasn't run yet). Strip sentinels at ingest. Found by the
+  harness, not by a human, exactly the point of it.
 
 ## Principles (do not drift from these)
 
@@ -104,7 +124,12 @@ readable text (epub as a book).
 Goal: a fetch control to the right of the Telegram toggle that pulls the latest
 from the active ingestors on demand; auto-updating as the real goal.
 
-Reality to resolve FIRST: the backlog already polls every 10s; webhook sources
+**Bug to diagnose FIRST (you reported it):** the 10s poll runs but the screen does
+not visibly update with new data. Likely suspects: `renderColumns` early-returns
+(its `lastRender` key, or the new drag/edit guard) so the repaint is skipped, or
+the poll's diff misses the change. The harness reproduces and confirms the fix.
+
+Reality to resolve too: the backlog already polls every 10s; webhook sources
 (telegram/email) push server-side; the local agent sync runs on your machine and
 the browser cannot trigger it. So "fetch" needs a precise meaning. Candidates:
 force an immediate poll, re-pull a specific source, and/or show per-source
@@ -116,28 +141,34 @@ Open questions: what each ingestor can actually be fetched from in a browser; wh
 Success: one click visibly refreshes the freshest available data, with honest
 per-source status.
 
-### Phase 4 — Settings → Help tab
-Goal: a Help tab in Settings documenting every feature in plain language. House
-rule for this copy: **simple words, and no em dashes — it must not read like AI.**
+### Phase 4 — Settings: width, Help tab, LLM & integrations
+- [ ] **4a — Width.** Widen the settings modal ~2x on desktop (it is very tall and
+      very skinny now). Mobile stays as is.
+- [ ] **4b — Help tab.** A Help tab/section documenting every feature in plain
+      language. House rule for this copy: simple words, and no em dashes, so it
+      does not read like AI. One section per feature (capture ⚡, sources, columns
+      + theming, RSVP controls, build mode, transcript, delete/trash, rename,
+      drag-reorder, books, stats, key) with short how-to copy.
+- [ ] **4c — LLM & integrations section.** One place for all LLM use across the
+      app: pick the provider and set its API key (reuses the existing per-user key
+      storage), and set up the Claude Code MCP plus the future Codex MCP right
+      here too (the purposeful redundancy with the ⌁ connect flow). Phase 5's
+      auto-Help uses whatever key is configured here.
 
-Scope: a section per feature (capture ⚡, sources, columns + theming, RSVP
-controls, build mode, transcript, delete/trash, rename, drag-reorder, books,
-stats, bring-your-own key) with short how-to copy. There is plenty of room in the
-settings modal.
-
-Success: a newcomer can learn every feature from this one tab.
+Success: settings reads comfortably on desktop, a newcomer learns every feature
+from the Help tab, and all keys + MCP setup live in one obvious place.
 
 ### Phase 5 — Keep Help current automatically
 Goal: whenever a feature changes (each push to `main`/prod), check whether Help
 needs updating, and update it right then.
 
-Mechanism to resolve: a CI step or a Claude Code hook on push that compares the
-change against the Help content and either flags or edits it. Auto-editing docs
-needs an LLM step; flag-only is simpler and cheaper. Could also ride the existing
-autofix.
+Decided: **use the LLM step** (auto-edit Help, not flag-only), spending the key
+configured in Phase 4c. On a push that changes features, an LLM diffs the change
+against the Help content and updates the Help copy in the same style (plain words,
+no em dashes).
 
-Open questions: hook vs GitHub Action vs existing autofix; flag-only vs auto-edit;
-where it runs and what triggers it.
+Open questions: hook vs GitHub Action vs the existing autofix as the trigger; how
+to scope "a feature changed" so it does not fire on every commit.
 
 Success: Help never silently drifts out of date.
 
@@ -154,10 +185,13 @@ Success: one key from a Claude page opens it in RSVP, faithfully.
 
 ## Sequencing + tracking
 
-Proposed order: **0 → 1 → 2 → 3 → 4 → 5 → 6**, adjustable. Phase 1 (mirroring) is
-the priority and is foundational to the whole "reading hub" value, so it leads the
-build work. Sub-items get checked off here as they ship; each phase gets its own
-plan in `docs/superpowers/plans/` when we start it.
+Gate (done): **ponytail review of the plan** + **self-feedback harness built and
+validated**. Confirmed order from here: **0 → 1 → 2 → 3 → 4 → 5 → 6** (you approved
+0/1/2; 3/4/5/6 approved with the refinements above). Phase 1 (mirroring) leads the
+build work; the harness verifies each phase on desktop + mobile before you ever
+look, and `/ponytail-review` gates each diff. Sub-items get checked off here as
+they ship; each phase gets its own plan in `docs/superpowers/plans/` when we start
+it.
 
 ## Non-goals (for now)
 

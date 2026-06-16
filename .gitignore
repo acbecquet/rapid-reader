@@ -2,3 +2,4 @@ node_modules/
 .vercel/
 .env*
 *.local
+tools/harness/shots/
