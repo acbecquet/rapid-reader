@@ -38,10 +38,16 @@ export function parseStructure(text) {
     if (FENCE.test(line)) {
       flushPara();
       const start = i++;
-      while (i < lines.length && !FENCE.test(lines[i])) i++;
-      const raw = lines.slice(start, i + 1).join('\n');
+      // A [[rr:…]] turn marker ends the block too: a stray or unclosed fence
+      // (a pasted snippet, or a tool result that contains ```) must never
+      // swallow the next turn's sentinel — that strands its content under the
+      // wrong speaker and renders the marker as literal text.
+      while (i < lines.length && !FENCE.test(lines[i]) && !SENTINEL.test(lines[i])) i++;
+      const closed = i < lines.length && FENCE.test(lines[i]);
       const body = lines.slice(start + 1, i);
+      const raw = lines.slice(start, closed ? i + 1 : i).join('\n');
       pushSec({ type: 'code', text: codePlaceholder(body), raw });
+      if (!closed && i < lines.length) i--; // a sentinel ended it → reprocess that line
       continue;
     }
 

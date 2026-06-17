@@ -69,6 +69,16 @@ git log --oneline -5 && npm test --silent
 one thing before i sleep - can you compile this into a single portable document i can read on my phone tonight, both a markdown file and a docx?
 [[rr:claude]]
 Love these answers. For bedtime reading I am compiling everything into one document, as both a GitHub-readable Markdown file and a portable .docx.
+[[rr:you]]
+if we're going to run a diagnostic probe, you better set it up exactly like this:
+\`\`\`cs
+private static Step R(float deg, float dwell) => new(StepKind.Rotate, arg: deg, dwell: dwell);
+[[rr:claude]]
+Good call — I wired the resolver and checked the log.
+[[rr:tool Bash]]
+wc -l "N:/SteamLibrary/steamapps/common/Easy Red 2/BepInEx/LogOutput.log"
+[[rr:claude]]
+That log has 2803 lines, so the resolver is being hit as expected.
 `;
 
 const NEWS_BODY = `# GLP-1 Therapies Silence Spontaneous Physical Activity
@@ -158,6 +168,18 @@ async function observe(browser) {
       });
       await sleep(300);
       await shoot(page, `${vp}-02b-youturn`);
+      // unbalanced-fence repro: an unclosed ``` in a you-turn must NOT swallow the
+      // following [[rr:claude]]/[[rr:tool]] markers (they would print literally and
+      // strand the rest right-aligned under "you"). Verify no marker leaks, then
+      // shoot the region — Claude's "2803 lines" reply must read on the left.
+      const leak = await page.evaluate(() => (document.getElementById('transcript')?.textContent || '').includes('[[rr:'));
+      console.log('  marker leak after unclosed fence?', leak);
+      await page.evaluate(() => {
+        const c = [...document.querySelectorAll('#transcript .turn.claude')].find((e) => /2803 lines/.test(e.textContent));
+        c?.scrollIntoView({ block: 'center' });
+      });
+      await sleep(300);
+      await shoot(page, `${vp}-02c-fence`);
     }
     await page.close();
   }

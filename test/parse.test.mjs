@@ -55,6 +55,33 @@ test('ordered + nested list items keep their marker and indent', () => {
   assert.ok(s[2].indent >= 2); // the nested bullet is indented under the list
 });
 
+test('a turn marker ends an unclosed code fence — the sentinel is never swallowed', () => {
+  // a you-turn pastes code behind a fence that is never closed; the following
+  // [[rr:claude]] / [[rr:tool]] markers must still switch speaker (not get eaten
+  // by the open fence, which strands content under the wrong speaker and prints
+  // the marker as literal text)
+  const s = parseStructure([
+    '[[rr:you]]',
+    'set it up like this:',
+    '```cs',
+    'private static Step R(float deg) => new(StepKind.Rotate, arg: deg);',
+    '[[rr:claude]]',
+    'Good call — wired the resolver.',
+    '[[rr:tool Bash]]',
+    'wc -l log.txt',
+    '[[rr:claude]]',
+    'That log has 2803 lines.',
+  ].join('\n'));
+  const code = s.find((x) => x.type === 'code');
+  assert.ok(code && code.role === 'you');               // unclosed fence stays under you
+  assert.ok(code.raw.includes('StepKind.Rotate'));
+  const claude = s.filter((x) => x.role === 'claude');
+  assert.ok(claude.some((x) => /Good call/.test(x.text)));   // speaker switched
+  assert.ok(claude.some((x) => /2803 lines/.test(x.text)));  // and switched back
+  assert.ok(s.some((x) => x.role === 'tool'));               // the tool turn registered
+  assert.ok(!s.some((x) => /\[\[rr:/.test((x.text || '') + (x.raw || '')))); // no literal markers
+});
+
 test('tables turn into readable sentences', () => {
   const s = parseStructure('| Tier | Price |\n|---|---|\n| Free | $0 |');
   assert.equal(s[0].type, 'table');
