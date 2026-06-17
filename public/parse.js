@@ -4,7 +4,8 @@
 // RSVP raw code word-by-word.
 import { tokenize } from './rsvp.js';
 
-const BULLET = /^\s*(?:[-*•]|\d+[.)])\s+/;
+// captures: [1] indent, [2] marker (-, *, •, or "1." / "2)"), [3] item text
+const LIST_ITEM = /^(\s*)([-*•]|\d+[.)])\s+(.*)$/;
 const HEADING = /^#{1,6}\s+/;
 const FENCE = /^\s*(?:```|~~~)/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
@@ -37,10 +38,16 @@ export function parseStructure(text) {
     if (FENCE.test(line)) {
       flushPara();
       const start = i++;
-      while (i < lines.length && !FENCE.test(lines[i])) i++;
-      const raw = lines.slice(start, i + 1).join('\n');
+      // A [[rr:…]] turn marker ends the block too: a stray or unclosed fence
+      // (a pasted snippet, or a tool result that contains ```) must never
+      // swallow the next turn's sentinel — that strands its content under the
+      // wrong speaker and renders the marker as literal text.
+      while (i < lines.length && !FENCE.test(lines[i]) && !SENTINEL.test(lines[i])) i++;
+      const closed = i < lines.length && FENCE.test(lines[i]);
       const body = lines.slice(start + 1, i);
+      const raw = lines.slice(start, closed ? i + 1 : i).join('\n');
       pushSec({ type: 'code', text: codePlaceholder(body), raw });
+      if (!closed && i < lines.length) i--; // a sentinel ended it → reprocess that line
       continue;
     }
 
@@ -60,17 +67,25 @@ export function parseStructure(text) {
       continue;
     }
 
-    if (BULLET.test(line)) {
+    if (LIST_ITEM.test(line)) {
       flushPara();
-      const items = [];
-      while (i < lines.length && (BULLET.test(lines[i]) || (/^\s{2,}\S/.test(lines[i]) && items.length))) {
-        if (BULLET.test(lines[i])) items.push(lines[i].replace(BULLET, '').trim());
-        else items[items.length - 1] += ' ' + lines[i].trim();
-        i++;
+      // each item is its own section (keeps marker + nesting depth) so the
+      // transcript can mirror real lists; the RSVP stream still reads them in order
+      while (i < lines.length) {
+        const m = lines[i].match(LIST_ITEM);
+        if (m) {
+          pushSec({
+            type: 'item', text: m[3].trim(), raw: lines[i],
+            ordered: /\d/.test(m[2]), marker: m[2],
+            indent: m[1].replace(/\t/g, '  ').length,
+          });
+          i++;
+        } else if (/^\s+\S/.test(lines[i]) && sections.length && sections[sections.length - 1].type === 'item') {
+          sections[sections.length - 1].text += ' ' + lines[i].trim(); // wrapped line
+          i++;
+        } else break;
       }
       i--;
-      const text = items.map((it) => (/[.?!:;]$/.test(it) ? it : it + '.')).join(' ');
-      pushSec({ type: 'bullets', text, raw: items.map((x) => '• ' + x).join('\n') });
       continue;
     }
 

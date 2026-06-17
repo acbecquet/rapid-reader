@@ -4,6 +4,19 @@ A pin-to-corner RSVP (Rapid Serial Visual Presentation) reading panel.
 Highlight text anywhere → it lands in a synced backlog → read it one word
 at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
 
+## NEVER claim it works without a screenshot (non-negotiable)
+
+Do **not** assert anything about how this app looks or behaves without proof you
+just produced. You have a real headless browser harness (`tools/harness/observe.mjs`
+→ screenshots you Read back). Use it. "It works", "it renders X", "fixed", "your
+turn is right-justified" — every such claim about UI or behavior needs a harness
+screenshot (or a test you actually ran) from THIS change, and ideally seeded with
+data that matches the user's real case, not a synthetic stand-in you assume is
+equivalent. The maintainer only sees test/prod, never your reasoning; an unproven
+claim that turns out false costs far more than saying "unverified — here's how I'll
+check." If you cannot reach the data (egress blocks test/prod), say so and ask the
+user for the screenshot or the raw source rather than guessing.
+
 ## Architecture (keep it this small)
 
 - `public/` — the entire frontend. Vanilla JS ES modules, no framework, no build step.
@@ -118,3 +131,12 @@ Hard-won, from a real mistake — do not repeat it:
 - Stats stay aggregate-only: no captured text in `rr:stats`, ever.
 - New env: `BLOB_READ_WRITE_TOKEN` (Vercel Blob), `TELEGRAM_WEBHOOK_SECRET`,
   `EMAIL_WEBHOOK_SECRET`. `/api/health` reports whether Redis/Blob are wired.
+- **The maintainer only ever tests on `test` and `prod` — nowhere else.**
+  Verification happens on **test.acb-apps.com** (the `staging` branch's Vercel
+  deploy) and, once promoted, **prod**. They will *not* open Vercel per-PR preview
+  URLs or any other branch/environment — in their words, "anywhere else, I can't
+  see it and I won't look." So when you build something for them to try, get it
+  onto **test**: point the `staging` branch at the commit you want live (a
+  force-push is fine — `staging` is just a deploy pointer, and Vercel auto-deploys
+  it to test.acb-apps.com). A preview URL is never enough; deploy to test or it
+  won't be seen.

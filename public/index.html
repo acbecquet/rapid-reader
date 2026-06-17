@@ -8,7 +8,7 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260617a">
 </head>
 <body>
 <div id="app">
@@ -153,6 +153,7 @@
         <button id="s-reset" class="btn ghost">Reset to defaults</button>
         <button id="s-close" class="btn">Done</button>
       </div>
+      <div id="build-tag" class="hint" style="text-align:center;margin:10px 0 0;opacity:.6"></div>
     </div>
   </div>
 
@@ -167,14 +168,17 @@
 
   <div id="add" class="modal" hidden>
     <div class="modal-card">
-      <h2>Paste text or a URL</h2>
+      <h2>Paste text or a URL, or load a file</h2>
       <textarea id="add-text" rows="8" placeholder="Paste text to read, or a URL to fetch…"></textarea>
+      <p class="hint">Or load a file: .txt, .md, .pdf, .docx, .pptx, or an .epub book.</p>
       <div class="row right">
         <button id="add-cancel" class="btn ghost">Cancel</button>
+        <button id="add-file-btn" class="btn ghost">Load file…</button>
         <button id="add-save" class="btn">Add to backlog</button>
       </div>
     </div>
   </div>
+  <input id="add-file" type="file" accept=".txt,.md,.markdown,.text,.pdf,.docx,.pptx,.epub,text/plain" hidden>
 
   <div id="colcfg" class="modal" hidden>
     <div class="modal-card">
@@ -303,6 +307,6 @@
 
   <div id="toast" hidden></div>
 </div>
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=20260617a"></script>
 </body>
 </html>

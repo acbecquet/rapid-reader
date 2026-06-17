@@ -10,8 +10,9 @@ async function inflateRaw(bytes) {
 }
 
 // Minimal zip reader: central directory → name/method/offset/size. No zip64
-// (EPUBs are small), CRCs not verified.
-async function unzip(buf) {
+// (EPUBs are small), CRCs not verified. Exported so office.js can read .docx/
+// .pptx (also zip-of-XML) without a second implementation.
+export async function unzip(buf) {
   const b = new Uint8Array(buf);
   const v = new DataView(b.buffer, b.byteOffset, b.byteLength);
   let eocd = -1;

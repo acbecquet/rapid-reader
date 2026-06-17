@@ -1,9 +1,15 @@
 import * as R from './rsvp.js';
 import * as P from './parse.js';
 import * as E from './epub.js';
+import * as O from './office.js';
 import { icon } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
+
+// Visible build stamp. Bump on every deploy, in lockstep with the ?v= query on
+// app.js/style.css in index.html and the CACHE name in sw.js — so a stale cache
+// is instantly distinguishable from a real bug on test/prod (see CLAUDE.md).
+const BUILD = '20260617a';
 
 // On phones the RSVP reader takes the whole screen; the backlog and transcript
 // live behind toggles instead of splitting the small viewport. This gates those.
@@ -117,18 +123,26 @@ async function healTitle(item) {
 const agentHealed = new Set();
 let agentHealCount = 0;
 async function healAgentTitles() {
-  if (agentHealCount >= 30) return;
+  if (agentHealCount >= 40) return;
   const idle = Date.now() - 120000;
-  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.titlePinned && !agentHealed.has(it.id) && (it.createdAt || 0) < idle);
+  // Only re-derive a title that actually looks broken — never overwrite a good
+  // one (the hook's Claude summary, or a clean prompt). Idle + un-pinned still
+  // gates it so we don't fight an actively-syncing session. Previews have no such
+  // risk, so any agent item still missing one is a candidate (incl. pinned/recent).
+  const titleable = (it) => !it.titlePinned && (it.createdAt || 0) < idle && looksBadTitle(it.title);
+  const cand = items.filter((it) => AGENT_SOURCES.has(it.sourceType) && !it.bookId
+    && !agentHealed.has(it.id) && (!it.preview || titleable(it)));
   let changed = false;
   for (const it of cand.slice(0, 4)) {
     agentHealed.add(it.id); agentHealCount++;
     try {
       const { text } = await api('GET', 'items', { query: { id: it.id } });
       const patch = {};
-      const title = P.deriveTitle(text);
+      if (titleable(it)) {
+        const title = P.deriveTitle(text);
+        if (title && title !== it.title) patch.title = title;
+      }
       const preview = P.derivePreview(text);
-      if (title && title !== it.title) patch.title = title;
       if (preview && preview !== it.preview) patch.preview = preview;
       if (Object.keys(patch).length) {
         Object.assign(it, patch);
@@ -355,6 +369,11 @@ function toggleGroup(gkey) {
 }
 
 function renderColumns() {
+  // Never rebuild the DOM mid-gesture: a drag in flight or an inline rename would
+  // have its element yanked out from under it (this is why both "didn't work" —
+  // the 4s/10s poll fired during the gesture). The gesture's own completion
+  // (drop / Enter / blur) clears the flag and forces the render.
+  if (dragId || inlineEditing) return;
   const key = JSON.stringify(items.map((i) => [i.id, i.title, i.readAt, i.progress, i.archivedAt, i.group, i.createdAt, i.bookmarkAt]))
     + (cur?.item.id || '') + JSON.stringify(prefs?.columns || []) + [...selected].join(',') + [...collapsedGroups].join(',') + agentView + Math.floor(Date.now() / 60000);
   if (key === lastRender) return;
@@ -391,7 +410,7 @@ function renderColumns() {
     // the agents column shows one agent at a time, never the noise groups
     if (agentCol) list = list.filter((it) => agentMatch(it) && !NOISE_GROUP.test(it.group || ''));
     const c = document.createElement('div');
-    c.className = 'col' + (col.density === 'compact' ? ' compact' : '');
+    c.className = 'col' + (col.density === 'compact' ? ' compact' : '') + (col.color ? ' themed' : '');
     c.dataset.col = col.id;
     if (col.color) c.style.setProperty('--col-accent', col.color);
     const h = document.createElement('div');
@@ -419,6 +438,7 @@ function renderColumns() {
 // items render flat at the top.
 const byNewest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
 let dragId = null;
+let inlineEditing = false; // a title/group rename is in progress — don't rebuild under it
 // Manual order pins a column: ordered items sort by `order`; new (un-ordered)
 // items float to the top by recency, so arrivals don't disturb your arrangement.
 const bySaved = (a, b) => {
@@ -486,6 +506,7 @@ function renderColBody(body, col, list) {
     const gn = document.createElement('span'); gn.className = 'g-n';
     gn.textContent = (prefs.groupAliases && prefs.groupAliases[name]) || name;
     gn.title = 'Double-click to rename';
+    gn.onclick = (e) => { if (gn.isContentEditable) e.stopPropagation(); }; // editing → don't toggle collapse
     gn.ondblclick = (e) => { e.stopPropagation(); editGroupAlias(gn, name); };
     gh.append(caret, gn);
     if (bm?.bookmarkAt) {
@@ -521,11 +542,19 @@ function itemRow(it, colId, colItems, isBookmark) {
     + (selected.has(it.id) ? ' sel' : '');
   row.draggable = !it.bookId; // chapters stay in reading order
   if (row.draggable) {
-    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; row.classList.add('dragging'); };
+    // setData is required or Firefox refuses to start the drag at all.
+    row.ondragstart = (e) => { dragId = it.id; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.id); row.classList.add('dragging'); };
     row.ondragend = () => { dragId = null; row.classList.remove('dragging'); document.querySelectorAll('.item.drop-target').forEach((el) => el.classList.remove('drop-target')); };
     row.ondragover = (e) => { if (dragId && dragId !== it.id && colItems.some((x) => x.id === dragId)) { e.preventDefault(); row.classList.add('drop-target'); } };
     row.ondragleave = () => row.classList.remove('drop-target');
-    row.ondrop = (e) => { e.preventDefault(); row.classList.remove('drop-target'); if (dragId && dragId !== it.id) reorderWithin(colItems, dragId, it.id); };
+    // drop fires before dragend, so clear dragId here (a local copy drives the
+    // reorder) — otherwise the render guard would block the reorder's repaint.
+    row.ondrop = (e) => {
+      e.preventDefault();
+      row.classList.remove('drop-target');
+      const from = dragId; dragId = null;
+      if (from && from !== it.id) reorderWithin(colItems, from, it.id);
+    };
   }
   row.title = [SOURCE_LABEL[it.sourceType] || it.source, timeLabel(it.createdAt), words + 'w', pct]
     .filter(Boolean).join(' · ');
@@ -571,33 +600,54 @@ function itemRow(it, colId, colItems, isBookmark) {
   // gestures don't fight). A manual rename pins the title against auto-titling.
   let tTimer;
   t.onclick = (e) => {
-    if (t.isContentEditable) return;
+    // while editing, swallow clicks entirely so they don't bubble to the row's
+    // open/close handler (that re-render was destroying the edit field mid-type)
+    if (t.isContentEditable) { e.stopPropagation(); return; }
     e.stopPropagation();
     if (e.detail > 1) return;
     clearTimeout(tTimer);
     tTimer = setTimeout(() => activate(e), 200);
   };
-  t.ondblclick = (e) => { e.stopPropagation(); clearTimeout(tTimer); editItemTitle(t, it); };
+  t.ondblclick = (e) => {
+    e.stopPropagation();
+    clearTimeout(tTimer);
+    if (t.isContentEditable) return; // already editing → let the native word-select happen
+    editItemTitle(t, it);
+  };
   return row;
 }
 
 // Inline-edit a backlog item's title; Enter saves + pins it, Esc/empty reverts.
 function editItemTitle(span, it) {
+  if (span.isContentEditable) return; // already editing this title
+  inlineEditing = true;               // freeze re-renders so the poll can't yank the field
   const row = span.closest('.item');
-  if (row) row.draggable = false; // don't let drag hijack text selection while editing
+  // a contentEditable nested in a draggable element won't accept typing in Chrome
+  // (selection collapses, keys are swallowed) — turn dragging off for the edit.
+  if (row) row.draggable = false;
   span.contentEditable = 'true';
   span.textContent = it.title;
-  span.focus();
-  const sel = getSelection(); const r = document.createRange();
-  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  // defer focus+select-all to the next frame, so it lands after the double-click /
+  // drag-arm gesture fully settles (otherwise the selection collapses immediately)
+  requestAnimationFrame(() => {
+    span.focus();
+    const sel = getSelection(); const r = document.createRange();
+    r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  });
   let done = false;
   const finish = (save) => {
     if (done) return; done = true;
+    inlineEditing = false;
     span.contentEditable = 'false';
     if (row) row.draggable = !it.bookId;
     const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 120);
     if (save && val && val !== it.title) {
       it.title = val; it.titlePinned = true;
+      // a poll may have swapped `items` for a fresh array mid-edit; pin the rename
+      // onto the live object too so the optimistic title survives the next render
+      const live = items.find((x) => x.id === it.id);
+      if (live) { live.title = val; live.titlePinned = true; }
+      if (cur?.item.id === it.id) $('item-title').textContent = val;
       api('PATCH', 'items', { body: { id: it.id, title: val, titlePinned: true } }).catch(() => {});
     }
     lastRender = ''; renderColumns();
@@ -612,13 +662,18 @@ function editItemTitle(span, it) {
 // Inline-edit a subgroup's display name → a per-user alias (the real group is
 // kept, so new items joining inherit the alias and live updates survive).
 function editGroupAlias(span, realGroup) {
+  if (span.isContentEditable) return;
+  inlineEditing = true; // freeze re-renders so the poll can't yank the field mid-edit
   span.contentEditable = 'true';
-  span.focus();
-  const sel = getSelection(); const r = document.createRange();
-  r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  requestAnimationFrame(() => {
+    span.focus();
+    const sel = getSelection(); const r = document.createRange();
+    r.selectNodeContents(span); sel.removeAllRanges(); sel.addRange(r);
+  });
   let done = false;
   const finish = (save) => {
     if (done) return; done = true;
+    inlineEditing = false;
     span.contentEditable = 'false';
     const val = span.textContent.replace(/\s+/g, ' ').trim().slice(0, 60);
     if (save && val) {
@@ -818,6 +873,50 @@ function showToken() {
 // the player there) without losing your place.
 let nowSpan = null;
 
+// Render a section's word tokens as clickable spans, applying inline `code` and
+// **bold** that may span one or more tokens (state carried across the run). Each
+// word keeps its data-i so RSVP highlight + click-to-seek still work.
+function appendWords(parent, entries) {
+  const st = { code: false, bold: false };
+  for (const [t, i] of entries) {
+    let w = t.w;
+    const bold = st.bold || w.includes('**');
+    if ((w.match(/\*\*/g) || []).length % 2) st.bold = !st.bold;
+    const code = st.code || w.includes('`');
+    if ((w.match(/`/g) || []).length % 2) st.code = !st.code;
+    w = w.replace(/\*\*/g, '').replace(/`/g, '');
+    const s = document.createElement('span');
+    s.textContent = w;
+    s.dataset.i = i;
+    if (t.link) s.classList.add('link');
+    if (code) s.classList.add('code');
+    if (bold) s.classList.add('b');
+    parent.append(s, ' ');
+  }
+}
+
+// Build a real <table> from the raw markdown rows (the RSVP stream still reads
+// the flattened sentence form; the transcript shows the table to mirror the source).
+function tableEl(raw) {
+  const tbl = document.createElement('table');
+  let header = true;
+  for (const line of (raw || '').split('\n')) {
+    if (!line.includes('|')) continue;
+    if (/^\s*\|?[\s:|-]+\|?\s*$/.test(line)) { header = false; continue; } // separator row
+    const cells = line.split('|').map((c) => c.trim());
+    if (cells[0] === '') cells.shift();
+    if (cells.length && cells[cells.length - 1] === '') cells.pop();
+    const tr = document.createElement('tr');
+    for (const c of cells) {
+      const cell = document.createElement(header ? 'th' : 'td');
+      cell.textContent = c;
+      tr.append(cell);
+    }
+    tbl.append(tr);
+  }
+  return tbl;
+}
+
 function buildTranscript() {
   const box = $('transcript');
   box.textContent = '';
@@ -833,8 +932,8 @@ function buildTranscript() {
     if (hasRoles && sec.role !== turnRole) {
       turnRole = sec.role;
       const th = sec.role ? (theme[sec.role] || {}) : null;
-      if (th && th.show === false) {
-        turn = null;
+      if (sec.role === 'think' || (th && th.show === false)) {
+        turn = null; // thinking is removed from the transcript entirely
       } else {
         turn = document.createElement('div');
         turn.className = 'turn' + (sec.role ? ' ' + sec.role : '');
@@ -852,12 +951,13 @@ function buildTranscript() {
     }
     if (!turn) return; // hidden role
 
-    // tool calls + thinking: collapsed, read from raw (they carry no RSVP tokens)
-    if (sec.role === 'tool' || sec.role === 'think') {
+    // tool calls stay, collapsed, but never truncate the text (thinking turns are
+    // dropped entirely above, by setting their turn to null)
+    if (sec.role === 'tool') {
       const det = document.createElement('details');
-      det.open = (theme[sec.role] || {}).collapsed === false;
+      det.open = (theme.tool || {}).collapsed === false;
       const sum = document.createElement('summary');
-      sum.textContent = (sec.role === 'tool' ? '⚙ ' : '◇ ') + (sec.type === 'code' ? 'code' : (sec.text || '').slice(0, 64));
+      sum.textContent = '⚙ ' + (sec.type === 'code' ? 'code' : (sec.text || 'tool').split('\n')[0]);
       const pre = document.createElement('pre');
       pre.textContent = sec.type === 'code' ? stripFence(sec.raw) : (sec.raw || sec.text || '');
       det.append(sum, pre);
@@ -875,6 +975,31 @@ function buildTranscript() {
     }
     if (!bySec[idx].length) return;
 
+    // list items mirror the source: a marker (• or the number) + indent for
+    // nesting, with the words still tokenized for RSVP highlight + click-to-seek
+    if (sec.type === 'item') {
+      const li = document.createElement('div');
+      li.className = 'li';
+      if (sec.indent) li.style.marginLeft = (sec.indent * 0.8) + 'em';
+      const mark = document.createElement('span');
+      mark.className = 'li-mark';
+      mark.textContent = sec.ordered ? sec.marker : '•';
+      const body = document.createElement('div');
+      body.className = 'li-body';
+      appendWords(body, bySec[idx]);
+      li.append(mark, body);
+      turn.append(li);
+      return;
+    }
+
+    // tables mirror the source as a real table (read as sentences in RSVP)
+    if (sec.type === 'table') {
+      const tbl = tableEl(sec.raw);
+      if (bySec[idx][0]) tbl.dataset.i = bySec[idx][0][1];
+      turn.append(tbl);
+      return;
+    }
+
     const para = document.createElement('p');
     if (sec.type === 'heading') para.className = 'h';
     else if (!hasRoles && sec.type === 'quote') {
@@ -889,13 +1014,7 @@ function buildTranscript() {
         para.className = 'quote';
       }
     }
-    for (const [t, i] of bySec[idx]) {
-      const s = document.createElement('span');
-      s.textContent = t.w;
-      s.dataset.i = i;
-      if (t.link) s.classList.add('link');
-      para.append(s, ' ');
-    }
+    appendWords(para, bySec[idx]);
     turn.append(para);
   });
 
@@ -967,13 +1086,14 @@ function markTranscript() {
   nowSpan?.classList.remove('now');
   nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
   if (nowSpan) nowSpan.classList.add('now');
-  // agent chats read like a messenger: newest pinned to the bottom — unless
-  // you're actively RSVP-playing, then the transcript follows the word
-  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
+  // a freshly-opened agent chat shows its latest turn (messenger style); but the
+  // moment you're reading (playing, or moved off the first word) the transcript
+  // follows the current word so you can always see where you are
+  if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing && cur.i === 0) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
   } else if (nowSpan) {
-    nowSpan.scrollIntoView({ block: 'nearest' });
+    nowSpan.scrollIntoView({ block: 'center' });
   }
 }
 
@@ -1153,6 +1273,17 @@ async function openItem(item, { start = true } = {}) {
   // lazy AI self-heal (non-agent items only — agent sessions are titled by the
   // native model in the sync hook, not Gemini/MiniMax): only what you opened
   if (!item.live && !settings.aiDisabled && !AGENT_SOURCES.has(item.sourceType) && looksBadTitle(item.title)) healTitle(item);
+  // backfill the preview line ("where we are now") for an agent item the moment
+  // you open it — free, since the body is already loaded here (no extra fetch)
+  if (!item.live && !item.bookId && AGENT_SOURCES.has(item.sourceType)) {
+    const preview = P.derivePreview(text);
+    if (preview && preview !== item.preview) {
+      item.preview = preview;
+      const live = items.find((x) => x.id === item.id);
+      if (live) live.preview = preview;
+      api('PATCH', 'items', { body: { id: item.id, preview } }).catch(() => {});
+    }
+  }
   clearTimeout(timer);
   if (cur) saveProgress();
   startSession(item);
@@ -1429,7 +1560,9 @@ $('wpm-now').onclick = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.matches('input, textarea, select')) return;
+  // never hijack keys while typing in a field or an inline rename — otherwise
+  // Space toggles the player (and is swallowed), arrows seek, etc.
+  if (e.target.matches('input, textarea, select') || e.target.isContentEditable) return;
   const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
@@ -1699,19 +1832,47 @@ $('add-save').onclick = async () => {
   }
 };
 
+// ---------- universal ＋ file loader (txt / md / docx / pptx / epub; pdf next) ----------
+// The ＋ "Load file" button and the 📖 button both feed files in here.
+$('add-file-btn').onclick = () => $('add-file').click();
+$('add-file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); };
+
+async function loadFile(file) {
+  const name = file.name || 'file';
+  const ext = (name.match(/\.([a-z0-9]+)$/i) || [, ''])[1].toLowerCase();
+  const title = name.replace(/\.[a-z0-9]+$/i, '').trim() || 'Document';
+  if (ext === 'epub') return loadEpub(file); // route into the book flow (redundant with 📖)
+  if (ext === 'pdf') return toast('PDF support is coming in the next update');
+  try {
+    let text;
+    if (ext === 'docx') { toast('Reading document…'); text = await O.docxText(await file.arrayBuffer()); }
+    else if (ext === 'pptx') { toast('Reading slides…'); text = await O.pptxText(await file.arrayBuffer()); }
+    else if (['txt', 'md', 'markdown', 'text'].includes(ext) || file.type.startsWith('text/')) { text = await file.text(); }
+    else return toast('Unsupported file — try .txt, .md, .docx, .pptx, .pdf, or .epub');
+    text = (text || '').trim();
+    if (!text) return toast('That file had no readable text');
+    await api('POST', 'items', { body: { text, title, sourceType: 'docs' } });
+    $('add').hidden = true;
+    toast(`Added — ${title}`);
+    await refresh();
+  } catch (err) {
+    toast('Could not read that file — ' + (err.message || 'unsupported'));
+  }
+}
+
 // ---------- 📖 EPUB (parsed locally, stored as a 'book' item) ----------
 $('epub-btn').onclick = () => $('add-epub').click();
-$('add-epub').onchange = async (e) => {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
+$('add-epub').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; if (f) loadEpub(f); };
+
+async function loadEpub(file) {
   toast('Reading book…');
   try {
     const book = await E.parseEpub(await file.arrayBuffer());
-    const bookId = crypto.randomUUID();
     const group = book.title + (book.author ? ' — ' + book.author : '');
-    // one item per chapter, grouped under the book; sessionId makes a
-    // re-upload upsert in place instead of duplicating.
+    // a STABLE id per book (title+author) so re-uploading the same book upserts
+    // its chapters in place instead of making a second copy in the same group
+    const slug = group.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 60);
+    const bookId = 'book-' + (slug || crypto.randomUUID());
     for (let i = 0; i < book.chapters.length; i++) {
       const ch = book.chapters[i];
       await api('POST', 'items', {
@@ -1728,7 +1889,7 @@ $('add-epub').onchange = async (e) => {
   } catch (err) {
     toast('Could not read that EPUB — ' + (err.message || 'is it DRM-free?'));
   }
-};
+}
 
 // ---------- books: number every chapter once, then leave it alone ----------
 // Book chapters are numbers only — "Chapter N" — never descriptions (the EPUB's
@@ -2082,6 +2243,8 @@ async function intakeShared() {
   }
 }
 applySettings();
+console.log('Rapid Reader build', BUILD);
+{ const bt = $('build-tag'); if (bt) bt.textContent = 'build ' + BUILD; }
 fillSettingsForm();
 updateConnectLabel();
 initAuth();
