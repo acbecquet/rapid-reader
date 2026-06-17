@@ -17,6 +17,11 @@ const INJECTED = /^\s*(<environment_context>|<INSTRUCTIONS>|#\s*AGENTS\.md|<syst
 // Automated background agents the user doesn't want surfaced.
 const OBSERVER = /\bmemory agent\b|continuing to observe\b/i;
 
+// An agent/worker run opens by *defining the assistant's role* ("You are a …",
+// "Act as the …") instead of asking a question — that's not a chat you had, so
+// it's dropped from capture. Kept deliberately narrow to spare real prompts.
+const ROLE_PROMPT = /^(you are|you're|you’re|act as)\s+(a|an|the)\b/i;
+
 // One JSONL entry → { role, text } | null. Tolerant of the shapes Claude and
 // Codex use (message/payload wrappers, string vs block content, event style).
 export function oneMessage(entry) {
@@ -62,22 +67,32 @@ export function cwdOf(jsonl) {
   return x ? x[1].trim() : '';
 }
 
-// Is this a background/non-interactive session we should NOT surface?
+// Is this a background/non-interactive session we should NOT surface? Keeps only
+// sessions you actually talk in. Drops: sub-agent (Task) runs; sessions with no
+// genuine typed prompt (slash-command / /context dumps, pasted blocks, injected
+// context — anything isJunkPrompt rejects); observer/memory agents; and agent
+// role prompts ("You are a …"). A real chat that merely opens with a paste is
+// kept, because a later genuine prompt still counts.
 export function isBackground(jsonl) {
-  let sidechain = false, realUsers = 0, firstPrompt = '';
+  let sidechain = false, genuine = 0, firstGenuine = '';
   for (const line of jsonl.split('\n')) {
     if (!line) continue;
     let e; try { e = JSON.parse(line); } catch { continue; }
     if (e.isSidechain === true) sidechain = true;
-    const m = oneMessage(e);
-    if (m?.role === 'user' && !INJECTED.test(m.text)) {
-      realUsers++;
-      if (!firstPrompt) firstPrompt = m.text;
+    const t = blocksOf(e);
+    if (!t || t.role !== 'user') continue;
+    for (const b of t.blocks) {
+      if (b.kind !== 'text') continue; // tool results aren't your prompts
+      const flat = b.text.replace(/\s+/g, ' ').trim();
+      if (isJunkPrompt(flat)) continue; // commands, dumps, markup, handoffs, injected
+      genuine++;
+      if (!firstGenuine) firstGenuine = flat;
     }
   }
-  if (sidechain) return true;                 // sub-agent (Task) session
-  if (realUsers === 0) return true;           // no genuine human turn
-  if (OBSERVER.test(firstPrompt)) return true; // memory/observer agent
+  if (sidechain) return true;                       // sub-agent (Task) session
+  if (genuine === 0) return true;                   // no real human prompt
+  if (OBSERVER.test(firstGenuine)) return true;     // memory/observer agent
+  if (ROLE_PROMPT.test(firstGenuine)) return true;  // agent/worker role prompt
   const proj = (cwdOf(jsonl).split(/[\\/]/).filter(Boolean).pop() || '');
   if (/^(observer|memory|background)/i.test(proj)) return true;
   return false;

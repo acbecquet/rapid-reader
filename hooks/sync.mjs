@@ -8,7 +8,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename, sep } from 'node:path';
-import { buildPayload, cwdOf } from './transcript.mjs';
+import { buildPayload, cwdOf, isBackground } from './transcript.mjs';
 
 function config() {
   let cfg = {};
@@ -22,6 +22,7 @@ function config() {
 const arg = (n, d) => { const i = process.argv.indexOf('--' + n); return i !== -1 ? process.argv[i + 1] : d; };
 const DAYS = Number(arg('days', 30));
 const WATCH = process.argv.includes('--watch');
+const PRUNE = process.argv.includes('--prune');
 
 // The two known CLI-agent transcript roots. Each entry says how to derive the
 // group (project) for a given file path.
@@ -101,8 +102,44 @@ async function scan(cfg, seen) {
   return pushed;
 }
 
+// One-time cleanup: delete already-captured sessions that the current filter now
+// rejects (sub-agents, command/diagnostic dumps, agent role prompts). Matches the
+// local transcript file to its backlog item by stable sessionId, then soft-deletes
+// the rejects (recoverable from Trash). Sessions with no local file are left alone.
+async function prune(cfg) {
+  const auth = cfg.token ? { authorization: 'Bearer ' + cfg.token } : {};
+  let items = [];
+  try {
+    const res = await fetch(cfg.url + '/api/items', { headers: auth });
+    ({ items } = await res.json());
+  } catch (e) { console.error('Could not load the backlog: ' + e.message); process.exit(1); }
+  const idBySession = new Map();
+  for (const it of items || []) if (it.sessionId) idBySession.set(it.sessionId, it.id);
+
+  const del = [];
+  let kept = 0;
+  for (const src of SOURCES) {
+    if (!existsSync(src.dir)) continue;
+    for (const file of walk(src.dir)) {
+      const id = idBySession.get(src.type + ':' + basename(file).replace(/\.jsonl$/, ''));
+      if (!id) continue; // not in the backlog
+      let jsonl = ''; try { jsonl = readFileSync(file, 'utf8'); } catch { continue; }
+      if (isBackground(jsonl)) del.push(id); else kept++;
+    }
+  }
+  if (del.length) {
+    await fetch(cfg.url + '/api/items', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json', ...auth },
+      body: JSON.stringify({ ids: del }),
+    });
+  }
+  console.log(`Pruned ${del.length} non-interactive session${del.length === 1 ? '' : 's'} → Trash; kept ${kept} real chat${kept === 1 ? '' : 's'}.`);
+}
+
 async function main() {
   const cfg = config();
+  if (PRUNE) return prune(cfg);
   const seen = new Map();
   const n = await scan(cfg, seen);
   console.log(`Synced ${n} session${n === 1 ? '' : 's'} from the last ${DAYS} days → ${cfg.url}`);

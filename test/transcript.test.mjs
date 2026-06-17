@@ -115,6 +115,43 @@ test('isBackground filters sub-agents, observers, and observer cwds — keeps re
   assert.equal(isBackground(observerCwd), true);
 });
 
+test('isBackground drops /context dumps and agent role prompts; keeps chats that open with a paste', () => {
+  // a /context (or other slash-command) dump: the only user turn is rendered
+  // markdown, not a prompt you typed
+  const contextDump = jl([
+    { type: 'user', message: { role: 'user', content: '## Context Usage\n\n**Model:** MiniMax-M3\n\n| Category | Tokens |\n| --- | --- |\n| System prompt | 2.7k |' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'shown locally' }] } },
+  ]);
+  assert.equal(isBackground(contextDump), true);
+  assert.equal(buildPayload({ jsonl: contextDump, sessionId: 'claude:ctx' }), null);
+
+  // an agent/worker run that opens by defining the assistant's role
+  const agent = jl([
+    { type: 'user', message: { role: 'user', content: 'You are a READ-ONLY release-audit worker. Audit the changes and report findings.' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Audit complete; three findings.' }] } },
+  ]);
+  assert.equal(isBackground(agent), true);
+  assert.equal(buildPayload({ jsonl: agent, sessionId: 'claude:agent' }), null);
+
+  // a real chat that merely opens with a pasted/quoted block is kept — a later
+  // genuine prompt still counts
+  const pasteFirst = jl([
+    { type: 'user', message: { role: 'user', content: '> [ERROR] crew controller null deref on spawn' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'I see the stack trace.' }] } },
+    { type: 'user', message: { role: 'user', content: 'ok can you fix the off-by-one in the scorer?' } },
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'Fixed and added a test.' }] } },
+  ]);
+  assert.equal(isBackground(pasteFirst), false);
+
+  // tool results arrive as user-role turns but aren't your prompts; a session
+  // whose only "user" content is a tool result is not interactive
+  const toolOnly = jl([
+    { type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'file-a\nfile-b' }] } },
+  ]);
+  assert.equal(isBackground(toolOnly), true);
+});
+
 test('buildPayload drops background sessions; title prefers the Claude summary, else your prompt', () => {
   const sidechain = jl([
     { type: 'user', isSidechain: true, message: { role: 'user', content: 'review this' } },
