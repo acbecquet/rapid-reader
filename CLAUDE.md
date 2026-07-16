@@ -7,7 +7,8 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
 ## Architecture (keep it this small)
 
 - `public/` — the entire frontend. Vanilla JS ES modules, no framework, no build step.
-  - `rsvp.js` — pure functions only (tokenize, ORP, pacing, build-up). Unit tested.
+  - `rsvp.js` — pure functions only (tokenize, ORP, pacing, build-up, phrase
+    clusters for span training). Unit tested.
   - `parse.js` — pure structure parser (sections, code placeholders, tables→sentences,
     code-heaviness detection). Unit tested.
   - `epub.js` — pure EPUB parser (zip via DecompressionStream, chapters→markdown).
@@ -27,7 +28,13 @@ at a time at high WPM with an ORP pivot, smart pacing, and a build-up mode.
   title is logged AND lazily re-derived (items PATCH `retitle`) for the item
   you open — capped per session so it never storms the LLM quota.
 - `api/telegram.js`, `api/email.js` — webhook ingestion (shared secret) → owner queue.
-- `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text.
+- `api/quiz.js` — comprehension quiz endpoint: POST {id} → 5 Gemini-built
+  multiple-choice questions on that item's text, on the user's own key
+  (keysFor). Post-read only, never on the capture/open hot path; graded
+  client-side (self-training, not an exam).
+- `api/stats.js` — reading-metrics endpoint. Aggregates only, never raw text,
+  plus a capped list of per-read training records (actual wpm, cluster size,
+  quiz score) that powers the Training trends in the stats panel.
 - `api/_lib/` — `store.js` (Redis lean index + Vercel Blob bodies, in-memory dev
   fallback), `ingest.js` (shared addItem: gate→putBody→index), `prefs.js`
   (defaults + source→column routing), `auth.js` gate, `readable.js` (URL→text,
