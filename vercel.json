@@ -1,6 +1,7 @@
 {
   "outputDirectory": "public",
   "functions": {
-    "api/items.js": { "maxDuration": 60 }
+    "api/items.js": { "maxDuration": 60 },
+    "api/quiz.js": { "maxDuration": 60 }
   }
 }

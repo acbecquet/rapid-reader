@@ -12,9 +12,11 @@ import healthHandler from './api/health.js';
 import telegramHandler from './api/telegram.js';
 import emailHandler from './api/email.js';
 import logHandler from './api/log.js';
+import quizHandler from './api/quiz.js';
 
 const API = {
   '/api/items': handler,
+  '/api/quiz': quizHandler,
   '/api/stats': statsHandler,
   '/api/live': liveHandler,
   '/api/login': loginHandler,

@@ -13,7 +13,7 @@
 // DELETE /api/items?id=… | { id } | { ids:[…] }   → { ok }
 import { getDoc, getDocs, setDoc, getBody, delBody } from './_lib/store.js';
 import { gate, keyFor } from './_lib/auth.js';
-import { mergePrefs, publicPrefs } from './_lib/prefs.js';
+import { mergePrefs, publicPrefs, keysFor } from './_lib/prefs.js';
 import { fetchReadable } from './_lib/readable.js';
 import { addItem, SOURCE_TYPES } from './_lib/ingest.js';
 import { makeTitle } from './_lib/title.js';
@@ -21,18 +21,6 @@ import { makeTitle } from './_lib/title.js';
 const KEY = 'rr:items';
 
 export { SOURCE_TYPES };
-
-// Which API keys this user's AI calls may spend. A signed-in user spends their
-// own Gemini key; the owner falls back to the shared env keys; a guest with no
-// key of their own gets none (explicit '' disables env fallback in llm()) — so
-// growing the tester pool never drains the owner's free quota.
-function keysFor(uid, prefs) {
-  const owner = uid === 'owner';
-  return {
-    geminiKey: prefs.geminiKey || (owner ? undefined : ''),
-    minimaxKey: owner ? undefined : '',
-  };
-}
 
 function defaultSourceType(url) {
   if (!url) return 'manual';
