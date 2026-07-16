@@ -21,6 +21,7 @@ const DEFAULTS = {
   buildStep: 20, // build mode: wpm added each interval
   buildEvery: 15, // build mode: interval in seconds
   autoplay: false, // open an item already playing (vs. paused) when you click it
+  quizAfterRead: true, // comprehension check when you finish an item
   keepOpen: true, // keep the backlog visible while reading
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
@@ -805,6 +806,7 @@ function play() {
     cur.i = 0;
     cur.playedMs = 0;
     cur.done = false;
+    $('quiz-btn').hidden = true; // re-reading: the quiz offer belongs to the finished pass
   }
   cur.playing = true;
   $('play').textContent = '⏸';
@@ -844,8 +846,17 @@ function finish() {
   $('time-left').textContent = '0:00';
   $('play').textContent = '▶';
   if (sess) sess.completed = true;
+  const rec = buildRecord(); // before flushSession clears the numbers
   flushSession();
   markRead(cur.item);
+  if (quizEligible(cur.item)) {
+    // hold the record until the quiz is taken or skipped, so the score rides along
+    pendingRecord = rec;
+    $('quiz-btn').hidden = false;
+    if (settings.quizAfterRead) openQuiz();
+  } else {
+    postRecord(rec);
+  }
 }
 
 async function markRead(item) {
@@ -879,6 +890,129 @@ function flushSession() {
   api('POST', 'stats', { body: { dateKey, ...sess }, keepalive: true }).catch(() => {});
   sess = null;
 }
+
+// ---------- trainer: post-read records + comprehension quiz ----------
+// A training record is one completed read: how fast it really went (actual
+// words/min, not the target), at what cluster size, and — when a quiz is
+// taken — how much stuck. Numbers only, never text (same rule as stats).
+let pendingRecord = null; // built at finish(); posted once the quiz is done/skipped
+let quiz = null; // { itemId, questions, graded }
+
+function quizEligible(item) {
+  return !settings.aiDisabled && !item.live && !AGENT_SOURCES.has(item.sourceType || '')
+    && (item.words || 0) >= 40;
+}
+
+function buildRecord() {
+  if (!cur || !sess || sess.playbackMs < 3000 || sess.words < 20) return null;
+  return {
+    ts: Date.now(),
+    words: sess.words,
+    wpm: Math.round(sess.words / (sess.playbackMs / 60000)),
+    cluster: settings.cluster,
+    sourceType: cur.item.sourceType || 'web',
+  };
+}
+
+function postRecord(rec) {
+  if (!rec) return;
+  api('POST', 'stats', { body: { record: rec }, keepalive: true }).catch(() => {});
+}
+
+function flushRecord() {
+  const rec = pendingRecord;
+  pendingRecord = null;
+  postRecord(rec);
+}
+
+function setQuizStatus(msg, err) {
+  const el = $('quiz-status');
+  el.textContent = msg || '';
+  el.classList.toggle('err', !!err);
+}
+
+async function openQuiz() {
+  if (!cur) return;
+  if (cur.playing) pause();
+  quiz = null;
+  $('quizmodal').hidden = false;
+  $('quiz-qs').textContent = '';
+  $('quiz-submit').hidden = true;
+  $('quiz-key').hidden = true;
+  setQuizStatus('Building your quiz…');
+  const itemId = cur.item.id;
+  try {
+    const { quiz: questions } = await api('POST', 'quiz', { body: { id: itemId } });
+    if ($('quizmodal').hidden || cur?.item.id !== itemId) return; // skipped/closed while loading
+    quiz = { itemId, questions, graded: false };
+    renderQuiz();
+  } catch (e) {
+    setQuizStatus(e.message || 'Could not build a quiz — try again', true);
+    if (prefs?.needsGeminiKey) $('quiz-key').hidden = false;
+  }
+}
+
+function renderQuiz() {
+  const box = $('quiz-qs');
+  box.textContent = '';
+  quiz.questions.forEach((q, qi) => {
+    const card = document.createElement('div');
+    card.className = 'quiz-q';
+    const h = document.createElement('div');
+    h.className = 'quiz-t';
+    h.textContent = (qi + 1) + '. ' + q.q;
+    card.append(h);
+    q.choices.forEach((c, ci) => {
+      const lab = document.createElement('label');
+      lab.className = 'quiz-c';
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'qz' + qi;
+      r.value = ci;
+      lab.append(r, ' ' + c);
+      card.append(lab);
+    });
+    box.append(card);
+  });
+  setQuizStatus('Answer from memory — no peeking at the transcript.');
+  $('quiz-submit').textContent = 'Check answers';
+  $('quiz-submit').hidden = false;
+}
+
+function gradeQuiz() {
+  if (!quiz || quiz.graded) return doneQuiz();
+  let right = 0;
+  quiz.questions.forEach((q, qi) => {
+    const inputs = [...$('quiz-qs').querySelectorAll(`input[name="qz${qi}"]`)];
+    const picked = inputs.find((r) => r.checked);
+    inputs[q.answer].parentElement.classList.add('right');
+    if (picked && Number(picked.value) === q.answer) right++;
+    else if (picked) picked.parentElement.classList.add('wrong');
+    inputs.forEach((r) => { r.disabled = true; });
+  });
+  quiz.graded = true;
+  const total = quiz.questions.length;
+  const pct = Math.round((right / total) * 100);
+  setQuizStatus(`${right}/${total} — ${pct}%` + (
+    pct >= 80 ? ' · solid. Try a higher WPM or a bigger cluster next.' :
+    pct < 60 ? ' · drop the WPM a notch and rebuild.' : ''
+  ));
+  if (pendingRecord) pendingRecord.quiz = { score: right, total };
+  $('quiz-submit').textContent = 'Done';
+}
+
+function doneQuiz() {
+  $('quizmodal').hidden = true;
+  flushRecord(); // carries the quiz score when one was graded
+  quiz = null;
+}
+
+$('quiz-btn').onclick = openQuiz;
+$('quiz-submit').onclick = gradeQuiz;
+$('quiz-skip').onclick = doneQuiz;
+// keep the record pending: they may add a key and hit quiz again
+$('quiz-key').onclick = () => { $('quizmodal').hidden = true; openKeyModal(true); };
+$('quizmodal').onclick = (e) => { if (e.target === $('quizmodal')) doneQuiz(); };
 
 // ---------- live highlight (ephemeral — never in the backlog) ----------
 let liveSeen = 0;
@@ -949,6 +1083,9 @@ async function openItem(item, { start = true } = {}) {
   if (!item.live && !settings.aiDisabled && !AGENT_SOURCES.has(item.sourceType) && looksBadTitle(item.title)) healTitle(item);
   clearTimeout(timer);
   if (cur) saveProgress();
+  flushRecord(); // a record from the previous read posts as-is (no quiz taken)
+  $('quiz-btn').hidden = true;
+  if (!$('quizmodal').hidden) { $('quizmodal').hidden = true; quiz = null; }
   startSession(item);
   let sections, tokens;
   try {
@@ -1041,6 +1178,9 @@ function closeReader() {
   clearTimeout(timer);
   if (cur) saveProgress();
   flushSession();
+  flushRecord();
+  $('quiz-btn').hidden = true;
+  if (!$('quizmodal').hidden) { $('quizmodal').hidden = true; quiz = null; }
   cur = null;
   applyTranscript();
   $('reader').hidden = true;
@@ -1142,14 +1282,50 @@ function statsHtml(days) {
     <div class="src"><span>${num(sum(keys, (d) => d.words))} words</span><span>${fmt(sum(keys, (d) => d.ms))} active</span><span>${sum(keys, (d) => d.completed)} items</span></div>`;
 }
 
+// ---------- training trends (speed and comprehension, separately) ----------
+function trainingHtml(sessions) {
+  const h = '<h3>Training</h3>';
+  if (!sessions.length) {
+    return h + '<div class="src"><span>Finish a read to start your training log.</span></div>';
+  }
+  const wpmAvg = (list) => (list.length ? Math.round(list.reduce((a, s) => a + s.wpm, 0) / list.length) : 0);
+  const compAvg = (list) => (list.length
+    ? Math.round((list.reduce((a, s) => a + s.quiz.score / s.quiz.total, 0) / list.length) * 100)
+    : null);
+  const speedNow = wpmAvg(sessions.slice(-5));
+  const speedPrev = wpmAvg(sessions.slice(-10, -5));
+  const delta = speedPrev ? speedNow - speedPrev : null;
+  const quizzed = sessions.filter((s) => s.quiz);
+  const comp = compAvg(quizzed.slice(-10));
+  const avg3 = quizzed.length >= 3 ? compAvg(quizzed.slice(-3)) : null;
+  const nudge = avg3 == null
+    ? 'Take quizzes after reads to calibrate your next WPM target.'
+    : avg3 >= 80 ? 'Comprehension is holding — raise your WPM target or cluster size.'
+    : avg3 < 60 ? 'Comprehension is slipping — lower your WPM target and rebuild.'
+    : 'Hold this pace until comprehension settles above 80%.';
+  const rows = sessions.slice(-8).reverse().map((s) => {
+    const d = new Date(s.ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const q = s.quiz ? `${s.quiz.score}/${s.quiz.total}` : '·';
+    return `<div class="src"><span>${d} · ${SOURCE_LABEL[s.sourceType] || s.sourceType}</span><span>${s.wpm} wpm ×${s.cluster || 1}</span><span>${num(s.words)}w · ${q}</span></div>`;
+  }).join('');
+  return `${h}
+    <div class="grid">
+      <div><div class="big">${speedNow || '–'}</div><div class="lbl">avg wpm · last 5 reads</div></div>
+      <div><div class="big">${delta == null ? '–' : (delta > 0 ? '+' : '') + delta}</div><div class="lbl">vs previous 5</div></div>
+      <div><div class="big">${comp == null ? '–' : comp + '%'}</div><div class="lbl">comprehension · recent</div></div>
+    </div>
+    <p class="hint">${nudge}</p>
+    ${rows}`;
+}
+
 $('stats-btn').onclick = async () => {
   $('stats').hidden = false;
   $('stats-body').textContent = 'loading…';
   if (cur?.playing) pause();
   flushSession(); // so today's numbers include the session just read
   try {
-    const { days } = await api('GET', 'stats');
-    $('stats-body').innerHTML = statsHtml(days || {});
+    const { days, sessions } = await api('GET', 'stats');
+    $('stats-body').innerHTML = trainingHtml(sessions || []) + statsHtml(days || {});
   } catch {
     $('stats-body').textContent = 'Could not load stats — check token.';
   }
@@ -1245,10 +1421,14 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal', 'quizmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
-    if (e.key === 'Escape') { if (open === 'keymodal') closeKeyModal(); else $(open).hidden = true; }
+    if (e.key === 'Escape') {
+      if (open === 'keymodal') closeKeyModal();
+      else if (open === 'quizmodal') doneQuiz();
+      else $(open).hidden = true;
+    }
     return;
   }
   if (e.key === 'Escape') {
@@ -1282,6 +1462,7 @@ function fillSettingsForm() {
   renderMode();
   fillBuild();
   $('s-autoplay').checked = settings.autoplay;
+  $('s-quiz').checked = settings.quizAfterRead;
   // phones: the backlog is a full-screen sheet, so "keep open while reading"
   // can't apply — show it off and disabled there
   $('s-keepopen').checked = settings.keepOpen && !isMobile();
@@ -1355,6 +1536,7 @@ $('s-build-every').oninput = (e) => {
   if (cur) updateHud();
 };
 bind('s-autoplay', 'autoplay');
+bind('s-quiz', 'quizAfterRead');
 bind('s-keepopen', 'keepOpen');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
@@ -1854,7 +2036,7 @@ document.addEventListener('visibilitychange', () => {
   else { if (cur) saveProgress(); flushSession(); }
 });
 addEventListener('focus', pollLive);
-addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); });
+addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); flushRecord(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');
 }

@@ -410,6 +410,19 @@ body {
 #wpm-now:hover { color: var(--fg); }
 #cluster-now { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
 #cluster-now:hover { color: var(--fg); }
+
+/* comprehension quiz */
+#quiz-qs { max-height: 55vh; overflow: auto; }
+.quiz-q { margin: 12px 0; }
+.quiz-t { color: var(--fg); font-size: 12px; margin-bottom: 4px; }
+.quiz-c {
+  display: block; margin: 3px 0 3px 8px; padding: 3px 6px;
+  color: var(--dim); font-size: 12px; cursor: pointer; border-radius: 6px;
+}
+.quiz-c:hover { color: var(--fg); }
+.quiz-c.right { color: #79c07d; background: rgba(121, 192, 125, .1); }
+.quiz-c.wrong { color: var(--accent); background: rgba(224, 68, 62, .1); }
+#quiz-status.err { color: #e8a13c; }
 #wpm-now input {
   width: 58px;
   background: var(--panel);

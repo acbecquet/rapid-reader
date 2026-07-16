@@ -27,6 +27,7 @@
         <span id="item-title"></span>
         <select id="sections" hidden title="Jump to section ([ / ])"></select>
         <button id="raw-btn" class="chip" title="View raw source">source</button>
+        <button id="quiz-btn" class="chip" hidden title="Check comprehension - a short quiz on what you just read">quiz</button>
         <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
       </span>
       <span class="bar-spacer"></span>
@@ -125,6 +126,7 @@
         </label>
       </div>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
+      <label class="check"><input id="s-quiz" type="checkbox"> Quiz after reading - check comprehension when you finish an item</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
       <h3 class="s-h">Eye relief</h3>
@@ -189,6 +191,19 @@
         <button id="link-cancel" class="btn ghost">Stay here</button>
         <button id="link-later" class="btn ghost">Save for later</button>
         <button id="link-read" class="btn">Save &amp; read now</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="quizmodal" class="modal" hidden>
+    <div class="modal-card wide">
+      <h2>Comprehension check</h2>
+      <div id="quiz-status" class="hint"></div>
+      <div id="quiz-qs"></div>
+      <div class="row right">
+        <button id="quiz-key" class="btn ghost" hidden>Add your free Gemini key</button>
+        <button id="quiz-skip" class="btn ghost">Skip</button>
+        <button id="quiz-submit" class="btn" hidden>Check answers</button>
       </div>
     </div>
   </div>
