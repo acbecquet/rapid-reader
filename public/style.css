@@ -328,6 +328,10 @@ body {
 #post { flex: 1 1 0; text-align: left; overflow: visible; }
 #pivot { flex: 0 0 auto; color: var(--accent); }
 #word.code { font-size: calc(var(--reader-size) * .45); color: var(--dim); }
+/* multi-word cluster: the whole phrase rides in #pivot, centered by the pre/post
+   spacers; reader color (no accent pivot) and scaled down when the phrase is long */
+#word.multi { font-size: calc(var(--reader-size) * var(--cluster-scale, 1)); }
+#word.multi #pivot { color: var(--reader-fg); }
 #paused-hint {
   position: absolute;
   bottom: 8px; left: 0; right: 0;
@@ -404,6 +408,21 @@ body {
 }
 #wpm-now { min-width: 64px; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
 #wpm-now:hover { color: var(--fg); }
+#cluster-now { min-width: 26px; text-align: center; font-variant-numeric: tabular-nums; cursor: pointer; }
+#cluster-now:hover { color: var(--fg); }
+
+/* comprehension quiz */
+#quiz-qs { max-height: 55vh; overflow: auto; }
+.quiz-q { margin: 12px 0; }
+.quiz-t { color: var(--fg); font-size: 12px; margin-bottom: 4px; }
+.quiz-c {
+  display: block; margin: 3px 0 3px 8px; padding: 3px 6px;
+  color: var(--dim); font-size: 12px; cursor: pointer; border-radius: 6px;
+}
+.quiz-c:hover { color: var(--fg); }
+.quiz-c.right { color: #79c07d; background: rgba(121, 192, 125, .1); }
+.quiz-c.wrong { color: var(--accent); background: rgba(224, 68, 62, .1); }
+#quiz-status.err { color: #e8a13c; }
 #wpm-now input {
   width: 58px;
   background: var(--panel);

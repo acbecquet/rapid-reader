@@ -48,6 +48,18 @@ export function aiCovered(uid, merged) {
   return uid === 'owner' && !!(process.env.GEMINI_API_KEY || process.env.MINIMAX_API_KEY);
 }
 
+// Which API keys this user's AI calls may spend. A signed-in user spends their
+// own Gemini key; the owner falls back to the shared env keys; a guest with no
+// key of their own gets none (explicit '' disables env fallback in llm()) — so
+// growing the tester pool never drains the owner's free quota.
+export function keysFor(uid, merged) {
+  const owner = uid === 'owner';
+  return {
+    geminiKey: merged.geminiKey || (owner ? undefined : ''),
+    minimaxKey: owner ? undefined : '',
+  };
+}
+
 // Client-safe view of prefs: the raw key never leaves the server. The browser
 // gets only whether a key is set, and whether this user still needs one.
 export function publicPrefs(merged, uid) {

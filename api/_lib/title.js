@@ -102,6 +102,45 @@ export async function makeSummary(text, prefer, keys) {
   );
 }
 
+// Comprehension quiz: simple multiple-choice questions about a passage the
+// user just read. Returns [{ q, choices: [4], answer: 0-3 }] or null when no
+// LLM is available or the model can't produce valid JSON (one retry).
+export async function makeQuiz(text, n = 5, prefer, keys) {
+  const prompt =
+    `Write ${n} simple multiple-choice comprehension questions about the ` +
+    'following text. Test understanding of the main points and important ' +
+    'details, not trivia. Reply with ONLY a JSON array, no markdown fences, ' +
+    'in exactly this shape: ' +
+    '[{"q":"…","choices":["…","…","…","…"],"answer":0}] ' +
+    'with 4 choices per question, answer being the index (0-3) of the ' +
+    'correct choice, and correct answers spread evenly across positions.' +
+    '\n\n' + text.slice(0, 15000);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const out = await llm(prompt, 4000, prefer, keys);
+    if (!out) return null; // no key/provider — a retry won't help
+    const quiz = parseQuiz(out, n);
+    if (quiz) return quiz;
+  }
+  return null;
+}
+
+function parseQuiz(out, n) {
+  const s = out.replace(/```(?:json)?/g, '').trim();
+  const start = s.indexOf('[');
+  const end = s.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  let arr;
+  try { arr = JSON.parse(s.slice(start, end + 1)); } catch { return null; }
+  if (!Array.isArray(arr)) return null;
+  const qs = arr
+    .filter((x) => x && typeof x.q === 'string' && x.q.trim()
+      && Array.isArray(x.choices) && x.choices.length === 4
+      && x.choices.every((c) => typeof c === 'string' && String(c).trim())
+      && Number.isInteger(x.answer) && x.answer >= 0 && x.answer < 4)
+    .map((x) => ({ q: x.q.trim(), choices: x.choices.map((c) => String(c).trim()), answer: x.answer }));
+  return qs.length >= 3 ? qs.slice(0, n) : null; // a thin quiz is worse than a retry
+}
+
 // Confirm a user-supplied Gemini key really works before we store it — so the
 // sign-in flow can honestly say "you're set". Listing models needs only a
 // valid key and costs no generation quota, so checking never eats their free

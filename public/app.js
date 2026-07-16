@@ -16,10 +16,12 @@ const DEFAULTS = {
   color: '#eaeaea',
   bg: '#101014',
   wpm: 600,
+  cluster: 1, // words per flash (1-4) — span training
   mode: 'standard', // 'standard' | 'build'
   buildStep: 20, // build mode: wpm added each interval
   buildEvery: 15, // build mode: interval in seconds
   autoplay: false, // open an item already playing (vs. paused) when you click it
+  quizAfterRead: true, // comprehension check when you finish an item
   keepOpen: true, // keep the backlog visible while reading
   aiDisabled: false, // master off-switch: skip every AI call, pass raw text through
   transcript: true, // live transcript pane that follows the current word
@@ -605,14 +607,46 @@ function fmt(ms) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+// The player always runs on clusters (size 1 = classic single-word RSVP).
+// cmap snaps any token index (progress, transcript click, sentence nav) to
+// the cluster that contains it.
+function computeClusters() {
+  cur.clusters = R.clusterize(cur.tokens, settings.cluster);
+  cur.cmap = [];
+  cur.clusters.forEach((c, ci) => { for (let i = c.start; i <= c.end; i++) cur.cmap[i] = ci; });
+}
+
+function curCluster() {
+  return cur.clusters[cur.cmap[cur.i] ?? 0];
+}
+
 function showToken() {
-  const t = cur.tokens[cur.i];
-  const p = R.orpIndex(t.w);
-  $('pre').textContent = t.w.slice(0, p);
-  $('pivot').textContent = t.w[p] || '';
-  $('post').textContent = t.w.slice(p + 1);
-  $('word').classList.toggle('code', !!(t.code || t.link)); // long tokens shrink
-  syncSectionNav(t.sec);
+  const c = curCluster();
+  cur.i = c.start; // keep progress/seek cluster-aligned
+  const multi = c.end > c.start;
+  if (multi) {
+    $('pre').textContent = '';
+    $('pivot').textContent = c.w;
+    $('post').textContent = '';
+  } else {
+    const t = cur.tokens[cur.i];
+    const p = R.orpIndex(t.w);
+    $('pre').textContent = t.w.slice(0, p);
+    $('pivot').textContent = t.w[p] || '';
+    $('post').textContent = t.w.slice(p + 1);
+  }
+  $('word').classList.toggle('multi', multi);
+  // long clusters scale down instead of overflowing the stage: a length
+  // heuristic first, then a measured check for narrow screens / big fonts
+  let scale = multi ? Math.max(0.5, Math.min(1, 16 / c.w.length)) : 1;
+  $('word').style.setProperty('--cluster-scale', String(scale));
+  if (multi) {
+    const fit = $('stage').clientWidth * 0.92;
+    const w = $('pivot').scrollWidth;
+    if (w > fit) $('word').style.setProperty('--cluster-scale', String(Math.max(0.3, scale * (fit / w))));
+  }
+  $('word').classList.toggle('code', !!(c.code || c.link)); // long tokens shrink
+  syncSectionNav(c.sec);
   markTranscript();
   updateHud();
 }
@@ -621,12 +655,12 @@ function showToken() {
 // The full text, one span per token, following the current word — so you
 // can drop out of RSVP into normal reading (and click any word to jump
 // the player there) without losing your place.
-let nowSpan = null;
+let nowSpans = [];
 
 function buildTranscript() {
   const box = $('transcript');
   box.textContent = '';
-  nowSpan = null;
+  nowSpans = [];
   const bySec = cur.sections.map(() => []);
   cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
   cur.sections.forEach((sec, idx) => {
@@ -724,16 +758,21 @@ function applyTranscript() {
 
 function markTranscript() {
   if (!settings.transcript || $('transcript').hidden) return;
-  nowSpan?.classList.remove('now');
-  nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
-  if (nowSpan) nowSpan.classList.add('now');
+  for (const s of nowSpans) s.classList.remove('now');
+  nowSpans = [];
+  // highlight the whole current cluster, not just its first word
+  const c = curCluster();
+  for (let i = c.start; i <= c.end; i++) {
+    const el = $('transcript').querySelector(`[data-i="${i}"]`);
+    if (el) { el.classList.add('now'); nowSpans.push(el); }
+  }
   // agent chats read like a messenger: newest pinned to the bottom — unless
   // you're actively RSVP-playing, then the transcript follows the word
   if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
-  } else if (nowSpan) {
-    nowSpan.scrollIntoView({ block: 'nearest' });
+  } else if (nowSpans[0]) {
+    nowSpans[0].scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -749,18 +788,20 @@ function updateHud() {
     settings.mode === 'build' && wpm < settings.wpm
       ? `${wpm} → ${settings.wpm} wpm`
       : `${wpm} wpm`;
+  $('cluster-now').textContent = '×' + settings.cluster;
   $('time-left').textContent = fmt(R.remainingMs(cur.tokens, cur.i, wpm));
   $('bar').style.width = (cur.i / cur.tokens.length) * 100 + '%';
 }
 
 function tick() {
   showToken();
-  const delay = R.delayMs(cur.tokens[cur.i], currentWpm());
+  const c = curCluster();
+  const delay = R.clusterDelayMs(cur.tokens, c, currentWpm());
   timer = setTimeout(() => {
     cur.playedMs += delay;
-    if (sess) { sess.playbackMs += delay; sess.words += 1; }
-    if (cur.i >= cur.tokens.length - 1) return finish();
-    cur.i++;
+    if (sess) { sess.playbackMs += delay; sess.words += c.end - c.start + 1; }
+    if (c.end >= cur.tokens.length - 1) return finish();
+    cur.i = c.end + 1;
     tick();
   }, delay);
 }
@@ -772,6 +813,7 @@ function play() {
     cur.i = 0;
     cur.playedMs = 0;
     cur.done = false;
+    $('quiz-btn').hidden = true; // re-reading: the quiz offer belongs to the finished pass
   }
   cur.playing = true;
   $('play').textContent = '⏸';
@@ -794,6 +836,7 @@ function togglePlay() {
 function seek(i) {
   clearTimeout(timer);
   cur.i = Math.max(0, Math.min(i, cur.tokens.length - 1));
+  cur.i = curCluster().start; // land on a cluster boundary
   cur.done = false;
   if (cur.playing) tick();
   else showToken();
@@ -805,13 +848,22 @@ function finish() {
   $('pre').textContent = '';
   $('pivot').textContent = '✓';
   $('post').textContent = '';
-  $('word').classList.remove('code');
+  $('word').classList.remove('code', 'multi');
   $('bar').style.width = '100%';
   $('time-left').textContent = '0:00';
   $('play').textContent = '▶';
   if (sess) sess.completed = true;
+  const rec = buildRecord(); // before flushSession clears the numbers
   flushSession();
   markRead(cur.item);
+  if (quizEligible(cur.item)) {
+    // hold the record until the quiz is taken or skipped, so the score rides along
+    pendingRecord = rec;
+    $('quiz-btn').hidden = false;
+    if (settings.quizAfterRead) openQuiz();
+  } else {
+    postRecord(rec);
+  }
 }
 
 async function markRead(item) {
@@ -845,6 +897,129 @@ function flushSession() {
   api('POST', 'stats', { body: { dateKey, ...sess }, keepalive: true }).catch(() => {});
   sess = null;
 }
+
+// ---------- trainer: post-read records + comprehension quiz ----------
+// A training record is one completed read: how fast it really went (actual
+// words/min, not the target), at what cluster size, and — when a quiz is
+// taken — how much stuck. Numbers only, never text (same rule as stats).
+let pendingRecord = null; // built at finish(); posted once the quiz is done/skipped
+let quiz = null; // { itemId, questions, graded }
+
+function quizEligible(item) {
+  return !settings.aiDisabled && !item.live && !AGENT_SOURCES.has(item.sourceType || '')
+    && (item.words || 0) >= 40;
+}
+
+function buildRecord() {
+  if (!cur || !sess || sess.playbackMs < 3000 || sess.words < 20) return null;
+  return {
+    ts: Date.now(),
+    words: sess.words,
+    wpm: Math.round(sess.words / (sess.playbackMs / 60000)),
+    cluster: settings.cluster,
+    sourceType: cur.item.sourceType || 'web',
+  };
+}
+
+function postRecord(rec) {
+  if (!rec) return;
+  api('POST', 'stats', { body: { record: rec }, keepalive: true }).catch(() => {});
+}
+
+function flushRecord() {
+  const rec = pendingRecord;
+  pendingRecord = null;
+  postRecord(rec);
+}
+
+function setQuizStatus(msg, err) {
+  const el = $('quiz-status');
+  el.textContent = msg || '';
+  el.classList.toggle('err', !!err);
+}
+
+async function openQuiz() {
+  if (!cur) return;
+  if (cur.playing) pause();
+  quiz = null;
+  $('quizmodal').hidden = false;
+  $('quiz-qs').textContent = '';
+  $('quiz-submit').hidden = true;
+  $('quiz-key').hidden = true;
+  setQuizStatus('Building your quiz…');
+  const itemId = cur.item.id;
+  try {
+    const { quiz: questions } = await api('POST', 'quiz', { body: { id: itemId } });
+    if ($('quizmodal').hidden || cur?.item.id !== itemId) return; // skipped/closed while loading
+    quiz = { itemId, questions, graded: false };
+    renderQuiz();
+  } catch (e) {
+    setQuizStatus(e.message || 'Could not build a quiz — try again', true);
+    if (prefs?.needsGeminiKey) $('quiz-key').hidden = false;
+  }
+}
+
+function renderQuiz() {
+  const box = $('quiz-qs');
+  box.textContent = '';
+  quiz.questions.forEach((q, qi) => {
+    const card = document.createElement('div');
+    card.className = 'quiz-q';
+    const h = document.createElement('div');
+    h.className = 'quiz-t';
+    h.textContent = (qi + 1) + '. ' + q.q;
+    card.append(h);
+    q.choices.forEach((c, ci) => {
+      const lab = document.createElement('label');
+      lab.className = 'quiz-c';
+      const r = document.createElement('input');
+      r.type = 'radio';
+      r.name = 'qz' + qi;
+      r.value = ci;
+      lab.append(r, ' ' + c);
+      card.append(lab);
+    });
+    box.append(card);
+  });
+  setQuizStatus('Answer from memory — no peeking at the transcript.');
+  $('quiz-submit').textContent = 'Check answers';
+  $('quiz-submit').hidden = false;
+}
+
+function gradeQuiz() {
+  if (!quiz || quiz.graded) return doneQuiz();
+  let right = 0;
+  quiz.questions.forEach((q, qi) => {
+    const inputs = [...$('quiz-qs').querySelectorAll(`input[name="qz${qi}"]`)];
+    const picked = inputs.find((r) => r.checked);
+    inputs[q.answer].parentElement.classList.add('right');
+    if (picked && Number(picked.value) === q.answer) right++;
+    else if (picked) picked.parentElement.classList.add('wrong');
+    inputs.forEach((r) => { r.disabled = true; });
+  });
+  quiz.graded = true;
+  const total = quiz.questions.length;
+  const pct = Math.round((right / total) * 100);
+  setQuizStatus(`${right}/${total} — ${pct}%` + (
+    pct >= 80 ? ' · solid. Try a higher WPM or a bigger cluster next.' :
+    pct < 60 ? ' · drop the WPM a notch and rebuild.' : ''
+  ));
+  if (pendingRecord) pendingRecord.quiz = { score: right, total };
+  $('quiz-submit').textContent = 'Done';
+}
+
+function doneQuiz() {
+  $('quizmodal').hidden = true;
+  flushRecord(); // carries the quiz score when one was graded
+  quiz = null;
+}
+
+$('quiz-btn').onclick = openQuiz;
+$('quiz-submit').onclick = gradeQuiz;
+$('quiz-skip').onclick = doneQuiz;
+// keep the record pending: they may add a key and hit quiz again
+$('quiz-key').onclick = () => { $('quizmodal').hidden = true; openKeyModal(true); };
+$('quizmodal').onclick = (e) => { if (e.target === $('quizmodal')) doneQuiz(); };
 
 // ---------- live highlight (ephemeral — never in the backlog) ----------
 let liveSeen = 0;
@@ -915,6 +1090,9 @@ async function openItem(item, { start = true } = {}) {
   if (!item.live && !settings.aiDisabled && !AGENT_SOURCES.has(item.sourceType) && looksBadTitle(item.title)) healTitle(item);
   clearTimeout(timer);
   if (cur) saveProgress();
+  flushRecord(); // a record from the previous read posts as-is (no quiz taken)
+  $('quiz-btn').hidden = true;
+  if (!$('quizmodal').hidden) { $('quizmodal').hidden = true; quiz = null; }
   startSession(item);
   let sections, tokens;
   try {
@@ -933,6 +1111,7 @@ async function openItem(item, { start = true } = {}) {
     }
   });
   cur = { item, text, sections, tokens, anchors, i: 0, playedMs: 0, playing: false, done: false, sig: itemSig(item) };
+  computeClusters();
   if (item.progress > 5 && item.progress < tokens.length - 1) {
     cur.i = item.progress;
     toast('Resumed — ⟲ to restart');
@@ -993,6 +1172,8 @@ async function liveUpdateOpen(fresh) {
     }
   });
   cur.i = Math.min(cur.i, tokens.length - 1);
+  computeClusters();
+  cur.i = curCluster().start;
   $('item-title').textContent = fresh.title;
   buildSectionNav();
   buildTranscript();
@@ -1004,6 +1185,9 @@ function closeReader() {
   clearTimeout(timer);
   if (cur) saveProgress();
   flushSession();
+  flushRecord();
+  $('quiz-btn').hidden = true;
+  if (!$('quizmodal').hidden) { $('quizmodal').hidden = true; quiz = null; }
   cur = null;
   applyTranscript();
   $('reader').hidden = true;
@@ -1105,14 +1289,50 @@ function statsHtml(days) {
     <div class="src"><span>${num(sum(keys, (d) => d.words))} words</span><span>${fmt(sum(keys, (d) => d.ms))} active</span><span>${sum(keys, (d) => d.completed)} items</span></div>`;
 }
 
+// ---------- training trends (speed and comprehension, separately) ----------
+function trainingHtml(sessions) {
+  const h = '<h3>Training</h3>';
+  if (!sessions.length) {
+    return h + '<div class="src"><span>Finish a read to start your training log.</span></div>';
+  }
+  const wpmAvg = (list) => (list.length ? Math.round(list.reduce((a, s) => a + s.wpm, 0) / list.length) : 0);
+  const compAvg = (list) => (list.length
+    ? Math.round((list.reduce((a, s) => a + s.quiz.score / s.quiz.total, 0) / list.length) * 100)
+    : null);
+  const speedNow = wpmAvg(sessions.slice(-5));
+  const speedPrev = wpmAvg(sessions.slice(-10, -5));
+  const delta = speedPrev ? speedNow - speedPrev : null;
+  const quizzed = sessions.filter((s) => s.quiz);
+  const comp = compAvg(quizzed.slice(-10));
+  const avg3 = quizzed.length >= 3 ? compAvg(quizzed.slice(-3)) : null;
+  const nudge = avg3 == null
+    ? 'Take quizzes after reads to calibrate your next WPM target.'
+    : avg3 >= 80 ? 'Comprehension is holding — raise your WPM target or cluster size.'
+    : avg3 < 60 ? 'Comprehension is slipping — lower your WPM target and rebuild.'
+    : 'Hold this pace until comprehension settles above 80%.';
+  const rows = sessions.slice(-8).reverse().map((s) => {
+    const d = new Date(s.ts).toLocaleDateString([], { month: 'short', day: 'numeric' });
+    const q = s.quiz ? `${s.quiz.score}/${s.quiz.total}` : '·';
+    return `<div class="src"><span>${d} · ${SOURCE_LABEL[s.sourceType] || s.sourceType}</span><span>${s.wpm} wpm ×${s.cluster || 1}</span><span>${num(s.words)}w · ${q}</span></div>`;
+  }).join('');
+  return `${h}
+    <div class="grid">
+      <div><div class="big">${speedNow || '–'}</div><div class="lbl">avg wpm · last 5 reads</div></div>
+      <div><div class="big">${delta == null ? '–' : (delta > 0 ? '+' : '') + delta}</div><div class="lbl">vs previous 5</div></div>
+      <div><div class="big">${comp == null ? '–' : comp + '%'}</div><div class="lbl">comprehension · recent</div></div>
+    </div>
+    <p class="hint">${nudge}</p>
+    ${rows}`;
+}
+
 $('stats-btn').onclick = async () => {
   $('stats').hidden = false;
   $('stats-body').textContent = 'loading…';
   if (cur?.playing) pause();
   flushSession(); // so today's numbers include the session just read
   try {
-    const { days } = await api('GET', 'stats');
-    $('stats-body').innerHTML = statsHtml(days || {});
+    const { days, sessions } = await api('GET', 'stats');
+    $('stats-body').innerHTML = trainingHtml(sessions || []) + statsHtml(days || {});
   } catch {
     $('stats-body').textContent = 'Could not load stats — check token.';
   }
@@ -1162,6 +1382,24 @@ function bumpWpm(d) {
   toast(settings.wpm + ' wpm target');
 }
 
+// Words per flash (1-4). Takes effect immediately, even mid-read.
+function setCluster(n) {
+  settings.cluster = Math.max(1, Math.min(4, Math.round(n) || 1));
+  saveSettings();
+  fillSettingsForm();
+  if (cur) {
+    computeClusters();
+    cur.i = curCluster().start;
+    if (!cur.playing && !cur.done) showToken();
+    updateHud();
+  }
+}
+
+$('cluster-now').onclick = () => {
+  setCluster(settings.cluster % 4 + 1);
+  toast('×' + settings.cluster + ' word' + (settings.cluster === 1 ? '' : 's') + ' per flash');
+};
+
 // Tap the HUD wpm value to type a target directly.
 $('wpm-now').onclick = () => {
   if (!cur || $('wpm-now').querySelector('input')) return;
@@ -1190,10 +1428,14 @@ $('wpm-now').onclick = () => {
 
 document.addEventListener('keydown', (e) => {
   if (e.target.matches('input, textarea, select')) return;
-  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal'];
+  const modals = ['settings', 'add', 'rawview', 'stats', 'linkmodal', 'colcfg', 'mcpmodal', 'infomodal', 'keymodal', 'breakmodal', 'quizmodal'];
   const open = modals.find((m) => !$(m).hidden);
   if (open) {
-    if (e.key === 'Escape') { if (open === 'keymodal') closeKeyModal(); else $(open).hidden = true; }
+    if (e.key === 'Escape') {
+      if (open === 'keymodal') closeKeyModal();
+      else if (open === 'quizmodal') doneQuiz();
+      else $(open).hidden = true;
+    }
     return;
   }
   if (e.key === 'Escape') {
@@ -1210,6 +1452,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); bumpWpm(10); }
   else if (e.key === 'ArrowDown') { e.preventDefault(); bumpWpm(-10); }
   else if (e.key === 't' || e.key === 'T') $('script-btn').click();
+  else if (e.key === 'c' || e.key === 'C') $('cluster-now').click();
 });
 
 // ---------- settings UI ----------
@@ -1221,9 +1464,12 @@ function fillSettingsForm() {
   $('s-bg').value = settings.bg;
   $('s-wpm').value = settings.wpm;
   $('s-wpm-num').value = settings.wpm;
+  $('s-cluster').value = settings.cluster;
+  $('s-cluster-val').textContent = settings.cluster;
   renderMode();
   fillBuild();
   $('s-autoplay').checked = settings.autoplay;
+  $('s-quiz').checked = settings.quizAfterRead;
   // phones: the backlog is a full-screen sheet, so "keep open while reading"
   // can't apply — show it off and disabled there
   $('s-keepopen').checked = settings.keepOpen && !isMobile();
@@ -1271,6 +1517,7 @@ bind('s-color', 'color');
 bind('s-bg', 'bg');
 $('s-wpm').oninput = (e) => setWpm(Number(e.target.value));
 $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
+$('s-cluster').oninput = (e) => setCluster(Number(e.target.value));
 // Mode is a Standard/Build radio (circular indicators); Build reveals its two
 // sliders — wpm-per-interval and the interval (which live-updates the other's label).
 function renderMode() {
@@ -1296,6 +1543,7 @@ $('s-build-every').oninput = (e) => {
   if (cur) updateHud();
 };
 bind('s-autoplay', 'autoplay');
+bind('s-quiz', 'quizAfterRead');
 bind('s-keepopen', 'keepOpen');
 bind('s-noai', 'aiDisabled');
 $('s-keepopen').addEventListener('input', (e) => { if (e.target.checked) setBacklog(true); });
@@ -1795,7 +2043,7 @@ document.addEventListener('visibilitychange', () => {
   else { if (cur) saveProgress(); flushSession(); }
 });
 addEventListener('focus', pollLive);
-addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); });
+addEventListener('pagehide', () => { if (cur) saveProgress(); flushSession(); flushRecord(); });
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('sw.js');
 }

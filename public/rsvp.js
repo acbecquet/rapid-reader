@@ -74,6 +74,50 @@ export function buildWpm(playedMs, targetWpm, { stepWpm = BUILD.stepWpm, stepSec
   return Math.min(targetWpm, wpm);
 }
 
+// Cluster training: group up to `size` (1-4) consecutive tokens into one
+// flash so the reader practices taking in a whole phrase per fixation.
+// A cluster is always one natural unit: it closes at clause/sentence/paragraph
+// ends and at section changes, and URL/code tokens stay solo. With size 1 this
+// is one cluster per token, so the player runs on clusters unconditionally.
+export function clusterize(tokens, size = 1) {
+  size = Math.max(1, Math.min(4, Math.floor(size) || 1));
+  const out = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const start = i;
+    const first = tokens[i];
+    let end = i;
+    if (!first.link && !first.code) {
+      while (
+        end - start + 1 < size &&
+        end + 1 < tokens.length &&
+        !tokens[end].sentenceEnd && !tokens[end].clauseEnd && !tokens[end].paraEnd &&
+        tokens[end + 1].sec === first.sec &&
+        !tokens[end + 1].link && !tokens[end + 1].code
+      ) end++;
+    }
+    const members = tokens.slice(start, end + 1);
+    out.push({
+      start,
+      end,
+      w: members.map((t) => t.w).join(' '),
+      sec: first.sec,
+      code: members.some((t) => !!t.code),
+      link: members.some((t) => !!t.link),
+    });
+    i = end + 1;
+  }
+  return out;
+}
+
+// A cluster's display time is the sum of its members' delays, so a WPM target
+// means the same words-per-minute at any cluster size.
+export function clusterDelayMs(tokens, cluster, wpm) {
+  let ms = 0;
+  for (let i = cluster.start; i <= cluster.end; i++) ms += delayMs(tokens[i], wpm);
+  return ms;
+}
+
 // Estimated time to read tokens[from..] at a fixed wpm.
 export function remainingMs(tokens, from, wpm) {
   let ms = 0;

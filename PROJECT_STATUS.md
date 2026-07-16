@@ -1,29 +1,54 @@
 # Rapid Reader Project Status
 
-Last updated: 2026-06-11 20:15 America/Phoenix  
+Last updated: 2026-07-16 America/Phoenix  
 Repository: `acbecquet/rapid-reader`  
 Current production branch: `main`  
-Code baseline at time of writing: `3a7098837c55d7ee0b931cd145566fbb31e95108`  
-Project state: live-testable v1.2 plus backlog height cap
+Project state: trainer pivot (see below) on top of live-testable v1.2
 
 This document is the context reset point. If the chat context is crowded, start
 from here plus `README.md`.
 
 ## Current Goal
 
-Rapid Reader is a personal high-speed review queue for AI/code-assistant output,
-long answers, docs, articles, and books. The main loop is:
+Rapid Reader is a reading trainer.
+The original premise (read everything at very high WPM with single-word RSVP) did not hold up: comprehension drops sharply at forced high speeds, matching the published research (Rayner et al., 2016).
+The app now trains reading speed and comprehension as two separate, measured tracks, using all the existing intake (backlog, EPUB, URL fetch, paste, share, agent capture) as training material.
+
+The main loop is:
 
 1. Capture text from browser selections, clipboard, phone share, manual paste,
    agent hooks, or MCP.
 2. Store or preview it in a synced backlog.
 3. Parse it into readable sections and RSVP tokens.
-4. Read it with an ORP-pivot RSVP player, smart pacing, progress tracking, and
-   optional transcript view.
-5. Mark items reviewed, archive them, summarize code-heavy text, or keep live
-   captures only when useful.
+4. Train speed: read with the cluster RSVP player (1-4 word phrases per flash,
+   honest WPM), with smart pacing, build-up ramp, and progress tracking.
+5. Train comprehension: finish a piece, take the Gemini-built quiz, and let the
+   stats panel's Training trends say when to push and when to back off.
 
 ## Recently Finished
+
+### Trainer pivot: cluster RSVP + comprehension quizzes + training trends
+
+Status: complete on branch `worktree-trainer-pivot` (this change).
+
+- `public/rsvp.js` gains pure `clusterize()` and `clusterDelayMs()`: up to 4
+  words per flash, never spanning clause/sentence/paragraph/section
+  boundaries; a cluster's display time is the sum of its members' delays so
+  WPM stays true at any cluster size.
+- The player runs on clusters everywhere (size 1 = classic single-word RSVP
+  with the ORP pivot). Settings slider, HUD `×N` cycler, and the `C` key.
+- `api/quiz.js`: POST {id} → 5 Gemini-built multiple-choice questions on the
+  item's text, on the user's own key. One retry on malformed JSON, validated
+  shape, post-read only.
+- Finishing an eligible read (not agent transcripts, not live highlights)
+  offers the quiz; `quizAfterRead` (default on) auto-opens it. Graded
+  client-side in a modal.
+- `api/stats.js` gains a capped `sessions` list of per-read training records
+  { ts, words, wpm, cluster, sourceType, quiz? }. The stats panel opens with
+  a Training section: speed trend, comprehension trend, recent reads, and a
+  next-target nudge (3-quiz average at 80%+ → raise; under 60% → lower).
+- Copy reframed around the trainer story (info panel, README, this file).
+- Design spec: `docs/superpowers/specs/2026-07-16-trainer-pivot-design.md`.
 
 ### Backlog top panel and filled-list behavior
 
@@ -75,7 +100,10 @@ Implementation status:
 | Area | Status | Main files | Notes |
 | --- | --- | --- | --- |
 | RSVP reader | Complete | `public/app.js`, `public/rsvp.js`, `public/style.css` | ORP pivot, WPM, smart delays, progress bar, time remaining, keyboard/tap controls. |
-| Build mode | Complete | `public/rsvp.js`, `public/app.js` | Starts at 80 WPM, adds 20 WPM every 15 seconds until target. |
+| Build mode | Complete | `public/rsvp.js`, `public/app.js` | Starts at 200 WPM, ramps by a configurable step until target. |
+| Cluster RSVP (span training) | Complete | `public/rsvp.js`, `public/app.js` | 1-4 words per flash, phrase-bounded, honest WPM. Settings slider, HUD ×N, `C` key. |
+| Comprehension quizzes | Complete | `api/quiz.js`, `api/_lib/title.js`, `public/app.js` | Post-read Gemini MCQs on the user's own key; graded client-side; quizAfterRead setting. |
+| Training trends | Complete | `api/stats.js`, `public/app.js` | Capped per-read records (wpm, cluster, quiz score); Training section with speed + comprehension curves and a next-target nudge. |
 | Top backlog | Complete | `public/index.html`, `public/style.css`, `public/app.js` | Full-width top panel, day grouping, filters, unread dots, one-line rows, scroll cap. |
 | Keep backlog open while reading | Complete | `public/app.js`, `public/index.html` | Toggle in settings. If off, opening an item closes backlog. If on, backlog stays visible. |
 | Browser extension capture | Complete | `extension/` | MV3 extension. Supports button, instant, and live selection modes. |
@@ -95,7 +123,7 @@ Implementation status:
 | Public demo mode | Complete | `api/_lib/auth.js`, tests | `PUBLIC_DEMO=1` lets tokenless visitors share the owner/dev queue. |
 | Claude Code hook | Complete | `hooks/` | Stop hook sends Claude transcripts into backlog, updating by session ID. |
 | MCP server | Complete | `mcp/server.mjs` | Agents can add/list/read/mark items and attach summaries. |
-| Tests and CI | Complete | `test/`, `.github/workflows` if present | Local `npm test` currently passes 52 tests. GitHub Actions was green on PR #10. |
+| Tests and CI | Complete | `test/`, `.github/workflows` if present | Local `npm test` currently passes 110 tests. |
 
 ## Deployment State
 
@@ -176,7 +204,7 @@ Fresh local verification before this document:
 
 ```text
 npm test
-52 tests passed
+110 tests passed
 0 tests failed
 ```
 

@@ -1,12 +1,16 @@
 # Rapid Reader
 
-**A high-speed review queue for AI coding output, long responses, docs, and summaries.**
+**A reading trainer: build reading speed and comprehension as two separate, measured skills.**
 
-AI agents generate more output than humans can review. The bottleneck is no
-longer writing code — it is reviewing agent work. Rapid Reader turns that
-output into a readable queue: highlight anything, send it to Rapid Reader,
-press play, read faster.
+Classic speed reading does not survive the evidence (Rayner et al., 2016):
+blasting single words at high WPM mostly costs comprehension.
+So Rapid Reader trains what is actually trainable.
+**Span**: cluster RSVP flashes 1-4 word phrases at a fixed spot, at an honest WPM.
+**Comprehension**: finish a piece and Gemini builds a short quiz about it, so every speed gain is checked against what actually stuck.
+The stats panel tracks both curves and tells you when to push and when to back off.
 
+Everything you load is training material: articles, books (EPUB), pasted
+text, shared pages, and agent output.
 It RSVPs the *language around the work* — summaries, plans, explanations,
 review notes, docs, articles — never raw code or raw diffs. Code-heavy
 captures get summarized into review notes first.
@@ -30,12 +34,18 @@ captures get summarized into review notes first.
 3. **Parse** — structured output is split into sections: headings become
    navigation, bullets and tables become readable sentences, code blocks
    become placeholders (raw source is one tap away).
-4. **Play** — Spritz-style RSVP with an ORP pivot letter, smart pacing,
-   build-up mode, progress, and time remaining. Reading resumes where you
-   left off.
-5. **Review** — mark reviewed, archive, skip, or summarize. The stats
-   dashboard tracks words reviewed, active time, estimated time saved,
-   streaks, and per-source volume.
+4. **Train** — Spritz-style RSVP with an ORP pivot letter, smart pacing,
+   build-up mode, progress, and time remaining. **Words per flash** (×1 to
+   ×4) trains span: whole phrase clusters per flash, never spanning a
+   clause, sentence, or paragraph boundary, with WPM kept honest. Reading
+   resumes where you left off.
+5. **Check** — finishing a piece offers a short Gemini-built quiz (on your
+   own free key). The score is logged next to the actual WPM and cluster
+   size of that read.
+6. **Adjust** — the stats dashboard tracks the speed curve and the
+   comprehension curve separately, plus words reviewed, active time,
+   streaks, and per-source volume. Holding 80%+ on quizzes? Raise the
+   target. Under 60%? Back off and rebuild.
 
 ## Features
 

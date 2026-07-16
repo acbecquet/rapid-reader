@@ -21,12 +21,13 @@
       </span>
       <span class="bar-sep">|</span>
       <span id="status">connecting…</span>
-      <button id="info-btn" class="icon-btn" title="What's the point? — the science behind speed reading" data-more="Why speed-read?">ⓘ</button>
+      <button id="info-btn" class="icon-btn" title="What's the point? — the science behind reading training" data-more="Why train?">ⓘ</button>
       <span class="bar-spacer"></span>
       <span id="now-reading" hidden title="What you're reading, and its source">
         <span id="item-title"></span>
         <select id="sections" hidden title="Jump to section ([ / ])"></select>
         <button id="raw-btn" class="chip" title="View raw source">source</button>
+        <button id="quiz-btn" class="chip" hidden title="Check comprehension - a short quiz on what you just read">quiz</button>
         <button id="keep-btn" class="chip accent" hidden title="Save this live highlight to the backlog">＋ keep</button>
       </span>
       <span class="bar-spacer"></span>
@@ -50,10 +51,10 @@
 
   <main id="main">
     <div id="empty">
-      <p><strong>Rapid Reader</strong></p>
+      <p><strong>Rapid Reader</strong> - train your reading</p>
       <p>Highlight text anywhere with the extension, share to this app on
-        your phone, or press <kbd>+</kbd> to paste. Select an item to start
-        reading.</p>
+        your phone, or press <kbd>+</kbd> to paste. Select an item to train:
+        read it in word clusters, then take a quick quiz to check what stuck.</p>
       <div id="auth" hidden>
         <p>Sign in to get your own private reading queue:</p>
         <div id="gsi-btn"></div>
@@ -78,6 +79,7 @@
         <button id="fwd" class="icon-btn" title="Next sentence (→)">⟩</button>
         <button id="script-btn" class="icon-btn" title="Show/hide transcript (T)">¶</button>
         <span id="wpm-now" title="Tap to set target WPM"></span>
+        <span id="cluster-now" title="Words per flash (C) - tap to cycle"></span>
         <span id="time-left"></span>
       </div>
     </div>
@@ -100,11 +102,15 @@
         <label>Text <input id="s-color" type="color"></label>
         <label>Background <input id="s-bg" type="color"></label>
       </div>
-      <div id="s-preview">Read <b>f</b>aster.</div>
+      <div id="s-preview">Train <b>f</b>aster reading.</div>
       <label>Target WPM
         <input id="s-wpm-num" type="number" min="100" max="1000" step="10" class="num">
         <input id="s-wpm" type="range" min="100" max="1000" step="10">
       </label>
+      <label>Words per flash <b>×<span id="s-cluster-val">1</span></b>
+        <input id="s-cluster" type="range" min="1" max="4" step="1">
+      </label>
+      <p class="hint">Span training: flash 2-4 word phrases instead of single words. WPM stays true, so bigger clusters mean fewer, longer flashes.</p>
       <label>Mode</label>
       <div id="s-mode" class="seg">
         <button type="button" class="seg-opt" data-v="standard">Standard</button>
@@ -120,6 +126,7 @@
         </label>
       </div>
       <label class="check"><input id="s-autoplay" type="checkbox"> Auto-play — start reading the moment an item opens</label>
+      <label class="check"><input id="s-quiz" type="checkbox"> Quiz after reading - check comprehension when you finish an item</label>
       <label class="check"><input id="s-keepopen" type="checkbox"> Keep backlog open while reading</label>
       <label class="check"><input id="s-noai" type="checkbox"> Disable all AI processing (raw passthrough — not recommended)</label>
       <h3 class="s-h">Eye relief</h3>
@@ -188,6 +195,19 @@
     </div>
   </div>
 
+  <div id="quizmodal" class="modal" hidden>
+    <div class="modal-card wide">
+      <h2>Comprehension check</h2>
+      <div id="quiz-status" class="hint"></div>
+      <div id="quiz-qs"></div>
+      <div class="row right">
+        <button id="quiz-key" class="btn ghost" hidden>Add your free Gemini key</button>
+        <button id="quiz-skip" class="btn ghost">Skip</button>
+        <button id="quiz-submit" class="btn" hidden>Check answers</button>
+      </div>
+    </div>
+  </div>
+
   <div id="rawview" class="modal" hidden>
     <div class="modal-card wide">
       <h2>Raw source</h2>
@@ -231,26 +251,28 @@
   <div id="infomodal" class="modal" hidden>
     <div class="modal-card wide info">
       <h2>What's the point?</h2>
-      <p><b>Rapid Serial Visual Presentation (RSVP)</b> flashes one word at a time at a fixed spot, so your eyes never move. It was pioneered by MIT psychologist <b>Mary&nbsp;C.&nbsp;Potter</b>, whose experiments showed the brain grasps meaning astonishingly fast. Readers could spot a named target picture in a stream shown as briefly as <b>13&nbsp;milliseconds</b> each (<a href="https://link.springer.com/article/10.3758/s13414-013-0605-z" target="_blank" rel="noopener">Potter et al., 2014</a>).</p>
+      <p><b>Rapid Reader is a reading trainer.</b> It works on two skills separately: how fast you take words in, and how much of them sticks. Anything you load (articles, books, pasted text, agent output) becomes training material.</p>
 
-      <h3>Why it can be faster</h3>
-      <p>Ordinary reading spends a real chunk of its time not on words but on <i>moving your eyes</i> (the jumps, called saccades, plus the line-return sweeps between fixations) and on silently sounding words out. RSVP removes the eye movement entirely and nudges you past sub-vocalizing. For reference, typical adult silent reading is about <b>238&nbsp;wpm</b> for non-fiction and <b>260&nbsp;wpm</b> for fiction, with most people between 175 and 300 (<a href="https://doi.org/10.1016/j.jml.2019.104047" target="_blank" rel="noopener">Brysbaert, 2019</a>, a meta-analysis of 190 studies).</p>
+      <h3>The honest starting point</h3>
+      <p>Classic "speed reading" does not survive the evidence. The most thorough review of the science (<a href="https://journals.sagepub.com/doi/10.1177/1529100615623267" target="_blank" rel="noopener">Rayner, Schotter, Masson, Potter &amp; Treiman, 2016</a>) found that pushing speed too high costs comprehension, partly because single-word RSVP removes <i>regressions</i> (re-reading), which the brain uses to repair misunderstandings. Blasting one word at a time at 700 wpm mostly trains you to nod along. This app used to lean on that premise; it does not anymore.</p>
 
-      <h3>The honest trade-off</h3>
-      <p>Speed reading isn't magic. The most thorough review of the science (<a href="https://journals.sagepub.com/doi/10.1177/1529100615623267" target="_blank" rel="noopener">Rayner, Schotter, Masson, Potter &amp; Treiman, 2016</a>) found that pushing speed too high costs comprehension, partly because RSVP removes <i>regressions</i> (re-reading), which the brain uses to repair misunderstandings. So read at a comfortable pace for things that matter, and faster when you just want the gist.</p>
+      <h3>What you can actually train</h3>
+      <p><b>Span.</b> Skilled readers take in short phrases per glance, not single words. The <b>words per flash</b> setting (×1 to ×4) shows whole phrase clusters at a fixed spot, RSVP-style (<a href="https://link.springer.com/article/10.3758/s13414-013-0605-z" target="_blank" rel="noopener">Potter et al., 2014</a> is the classic evidence that the brain grasps meaning this fast). WPM stays honest: bigger clusters mean fewer, longer flashes, so ×3 at 400 wpm is really 400 words a minute.</p>
+      <p><b>Comprehension.</b> When you finish a piece, the app builds a short quiz about it (Gemini, on your own free key) and logs the score next to the speed it was read at. That number is the difference between reading faster and skimming faster. For reference, typical adult silent reading is about <b>238&nbsp;wpm</b> for non-fiction, with most people between 175 and 300 (<a href="https://doi.org/10.1016/j.jml.2019.104047" target="_blank" rel="noopener">Brysbaert, 2019</a>, a meta-analysis of 190 studies).</p>
 
+      <h3>The training loop</h3>
       <table class="info-tbl">
-        <tr><th>Reading style</th><th>Typical speed</th><th>Comprehension</th></tr>
-        <tr><td>Careful silent reading</td><td>175 to 300 wpm</td><td>High</td></tr>
-        <tr><td>Skimming</td><td>roughly 400 to 700 wpm</td><td>Gist only; details drop</td></tr>
-        <tr><td>RSVP (this app)</td><td>you choose</td><td>High at moderate speeds, falls as you push</td></tr>
+        <tr><th>Step</th><th>What to do</th></tr>
+        <tr><td>1. Read</td><td>Pick a cluster size and a target WPM (Build mode ramps you up gently).</td></tr>
+        <tr><td>2. Quiz</td><td>Finish the piece, answer the quiz from memory.</td></tr>
+        <tr><td>3. Adjust</td><td>Holding 80%+? Raise the target or the cluster. Under 60%? Back off and rebuild.</td></tr>
       </table>
-      <p class="src">Sources: Brysbaert 2019; Rayner et al. 2016.</p>
+      <p class="src">The ∑ stats panel tracks both curves so progress is measured, not felt. Sources: Brysbaert 2019; Rayner et al. 2016.</p>
 
       <h3>Easier on the eyes — and for some readers especially</h3>
-      <p>Because the word stays put, RSVP eliminates the constant eye movement of normal reading, which can <b>reduce eye fatigue</b> and feels more comfortable, particularly on small screens. It also helps people whose eyes can't sweep a page easily. For <b>older readers and those with central-vision loss</b> (e.g. age-related macular degeneration), one fixed reading point is a genuine aid: a training study of observers averaging about 74 years old improved their RSVP reading speed by roughly <b>53%</b> (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3053100/" target="_blank" rel="noopener">Yu et&nbsp;al., central-vision-loss study</a>; overview: <a href="https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation" target="_blank" rel="noopener">Wikipedia, RSVP</a>).</p>
+      <p>Because the words stay put, RSVP eliminates the constant eye movement of normal reading, which can <b>reduce eye fatigue</b> and feels more comfortable, particularly on small screens. It also helps people whose eyes can't sweep a page easily. For <b>older readers and those with central-vision loss</b> (e.g. age-related macular degeneration), one fixed reading point is a genuine aid: a training study of observers averaging about 74 years old improved their RSVP reading speed by roughly <b>53%</b> (<a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3053100/" target="_blank" rel="noopener">Yu et&nbsp;al., central-vision-loss study</a>; overview: <a href="https://en.wikipedia.org/wiki/Rapid_serial_visual_presentation" target="_blank" rel="noopener">Wikipedia, RSVP</a>).</p>
 
-      <p class="hint">Tip: start in <b>Build</b> mode (it eases you up from 200 WPM), slow down for hard passages, and don't chase the highest number. Comprehension is the point.</p>
+      <p class="hint">Tip: chase the comprehension curve, not the WPM number. A real gain is reading faster at the same score.</p>
       <div class="row right"><button id="info-close" class="btn">Done</button></div>
     </div>
   </div>
@@ -258,7 +280,7 @@
   <div id="keymodal" class="modal" hidden>
     <div class="modal-card">
       <h2 id="key-title">One quick setup step</h2>
-      <p class="hint">Rapid Reader uses Google's Gemini to write sharp little titles for everything you capture. Drop in your own <span class="free">free</span> Gemini API key so you're reading on your own quota — about thirty seconds.</p>
+      <p class="hint">Rapid Reader uses Google's Gemini to build your comprehension quizzes and write sharp little titles for everything you capture. Drop in your own <span class="free">free</span> Gemini API key so you're training on your own quota — about thirty seconds.</p>
       <ol class="keysteps">
         <li>Click the red button below to open Google AI Studio, then click <b>Create API key</b>.</li>
         <li>Name the key (<b>rapid-reader-key</b> works) and leave "Imported project" on its default.</li>

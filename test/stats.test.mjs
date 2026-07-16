@@ -42,6 +42,33 @@ test('sessions aggregate into daily totals and per-source buckets', async () => 
   assert.equal(day.bySource.web.ms, 30000);
 });
 
+test('training records: validated, quiz optional, capped list', async () => {
+  let r = await call('POST', { record: { ts: 1000, words: 500, wpm: 431.4, cluster: 2, sourceType: 'book' } });
+  assert.equal(r.code, 200);
+  r = await call('POST', { record: { ts: 2000, words: 300, wpm: 512, cluster: 9, quiz: { score: 4, total: 5 } } });
+  assert.equal(r.code, 200);
+
+  r = await call('GET');
+  const [a, b] = r.body.sessions.slice(-2);
+  assert.equal(a.wpm, 431);
+  assert.equal(a.cluster, 2);
+  assert.equal(a.sourceType, 'book');
+  assert.equal('quiz' in a, false);
+  assert.equal(b.cluster, 4); // clamped
+  assert.deepEqual(b.quiz, { score: 4, total: 5 });
+
+  // invalid records are rejected outright
+  r = await call('POST', { record: { words: 0, wpm: 400 } });
+  assert.equal(r.code, 400);
+  r = await call('POST', { record: { words: 100, wpm: 99999 } });
+  assert.equal(r.code, 400);
+  // a bogus quiz is dropped, the record still lands
+  r = await call('POST', { record: { words: 100, wpm: 400, quiz: { score: 9, total: 5 } } });
+  assert.equal(r.code, 200);
+  r = await call('GET');
+  assert.equal('quiz' in r.body.sessions.at(-1), false);
+});
+
 test('rejects malformed sessions', async () => {
   let r = await call('POST', { playbackMs: 1000, words: 10 });
   assert.equal(r.code, 400); // no dateKey
