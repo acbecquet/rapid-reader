@@ -29,7 +29,7 @@ The main loop is:
 
 ### Trainer pivot: cluster RSVP + comprehension quizzes + training trends
 
-Status: complete on branch `worktree-trainer-pivot` (this change).
+Status: merged to `main` in PR #40 (2026-07-16).
 
 - `public/rsvp.js` gains pure `clusterize()` and `clusterDelayMs()`: up to 4
   words per flash, never spanning clause/sentence/paragraph/section
