@@ -636,8 +636,15 @@ function showToken() {
     $('post').textContent = t.w.slice(p + 1);
   }
   $('word').classList.toggle('multi', multi);
-  // long clusters scale down instead of overflowing the stage
-  $('word').style.setProperty('--cluster-scale', multi ? String(Math.max(0.5, Math.min(1, 16 / c.w.length))) : '1');
+  // long clusters scale down instead of overflowing the stage: a length
+  // heuristic first, then a measured check for narrow screens / big fonts
+  let scale = multi ? Math.max(0.5, Math.min(1, 16 / c.w.length)) : 1;
+  $('word').style.setProperty('--cluster-scale', String(scale));
+  if (multi) {
+    const fit = $('stage').clientWidth * 0.92;
+    const w = $('pivot').scrollWidth;
+    if (w > fit) $('word').style.setProperty('--cluster-scale', String(Math.max(0.3, scale * (fit / w))));
+  }
   $('word').classList.toggle('code', !!(c.code || c.link)); // long tokens shrink
   syncSectionNav(c.sec);
   markTranscript();
