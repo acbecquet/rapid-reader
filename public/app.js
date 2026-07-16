@@ -16,6 +16,7 @@ const DEFAULTS = {
   color: '#eaeaea',
   bg: '#101014',
   wpm: 600,
+  cluster: 1, // words per flash (1-4) — span training
   mode: 'standard', // 'standard' | 'build'
   buildStep: 20, // build mode: wpm added each interval
   buildEvery: 15, // build mode: interval in seconds
@@ -605,14 +606,39 @@ function fmt(ms) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 
+// The player always runs on clusters (size 1 = classic single-word RSVP).
+// cmap snaps any token index (progress, transcript click, sentence nav) to
+// the cluster that contains it.
+function computeClusters() {
+  cur.clusters = R.clusterize(cur.tokens, settings.cluster);
+  cur.cmap = [];
+  cur.clusters.forEach((c, ci) => { for (let i = c.start; i <= c.end; i++) cur.cmap[i] = ci; });
+}
+
+function curCluster() {
+  return cur.clusters[cur.cmap[cur.i] ?? 0];
+}
+
 function showToken() {
-  const t = cur.tokens[cur.i];
-  const p = R.orpIndex(t.w);
-  $('pre').textContent = t.w.slice(0, p);
-  $('pivot').textContent = t.w[p] || '';
-  $('post').textContent = t.w.slice(p + 1);
-  $('word').classList.toggle('code', !!(t.code || t.link)); // long tokens shrink
-  syncSectionNav(t.sec);
+  const c = curCluster();
+  cur.i = c.start; // keep progress/seek cluster-aligned
+  const multi = c.end > c.start;
+  if (multi) {
+    $('pre').textContent = '';
+    $('pivot').textContent = c.w;
+    $('post').textContent = '';
+  } else {
+    const t = cur.tokens[cur.i];
+    const p = R.orpIndex(t.w);
+    $('pre').textContent = t.w.slice(0, p);
+    $('pivot').textContent = t.w[p] || '';
+    $('post').textContent = t.w.slice(p + 1);
+  }
+  $('word').classList.toggle('multi', multi);
+  // long clusters scale down instead of overflowing the stage
+  $('word').style.setProperty('--cluster-scale', multi ? String(Math.max(0.5, Math.min(1, 16 / c.w.length))) : '1');
+  $('word').classList.toggle('code', !!(c.code || c.link)); // long tokens shrink
+  syncSectionNav(c.sec);
   markTranscript();
   updateHud();
 }
@@ -621,12 +647,12 @@ function showToken() {
 // The full text, one span per token, following the current word — so you
 // can drop out of RSVP into normal reading (and click any word to jump
 // the player there) without losing your place.
-let nowSpan = null;
+let nowSpans = [];
 
 function buildTranscript() {
   const box = $('transcript');
   box.textContent = '';
-  nowSpan = null;
+  nowSpans = [];
   const bySec = cur.sections.map(() => []);
   cur.tokens.forEach((t, i) => bySec[t.sec].push([t, i]));
   cur.sections.forEach((sec, idx) => {
@@ -724,16 +750,21 @@ function applyTranscript() {
 
 function markTranscript() {
   if (!settings.transcript || $('transcript').hidden) return;
-  nowSpan?.classList.remove('now');
-  nowSpan = $('transcript').querySelector(`[data-i="${cur.i}"]`);
-  if (nowSpan) nowSpan.classList.add('now');
+  for (const s of nowSpans) s.classList.remove('now');
+  nowSpans = [];
+  // highlight the whole current cluster, not just its first word
+  const c = curCluster();
+  for (let i = c.start; i <= c.end; i++) {
+    const el = $('transcript').querySelector(`[data-i="${i}"]`);
+    if (el) { el.classList.add('now'); nowSpans.push(el); }
+  }
   // agent chats read like a messenger: newest pinned to the bottom — unless
   // you're actively RSVP-playing, then the transcript follows the word
   if (AGENT_SOURCES.has(cur.item.sourceType) && !cur.playing) {
     const box = $('transcript');
     box.scrollTop = box.scrollHeight;
-  } else if (nowSpan) {
-    nowSpan.scrollIntoView({ block: 'nearest' });
+  } else if (nowSpans[0]) {
+    nowSpans[0].scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -749,18 +780,20 @@ function updateHud() {
     settings.mode === 'build' && wpm < settings.wpm
       ? `${wpm} → ${settings.wpm} wpm`
       : `${wpm} wpm`;
+  $('cluster-now').textContent = '×' + settings.cluster;
   $('time-left').textContent = fmt(R.remainingMs(cur.tokens, cur.i, wpm));
   $('bar').style.width = (cur.i / cur.tokens.length) * 100 + '%';
 }
 
 function tick() {
   showToken();
-  const delay = R.delayMs(cur.tokens[cur.i], currentWpm());
+  const c = curCluster();
+  const delay = R.clusterDelayMs(cur.tokens, c, currentWpm());
   timer = setTimeout(() => {
     cur.playedMs += delay;
-    if (sess) { sess.playbackMs += delay; sess.words += 1; }
-    if (cur.i >= cur.tokens.length - 1) return finish();
-    cur.i++;
+    if (sess) { sess.playbackMs += delay; sess.words += c.end - c.start + 1; }
+    if (c.end >= cur.tokens.length - 1) return finish();
+    cur.i = c.end + 1;
     tick();
   }, delay);
 }
@@ -794,6 +827,7 @@ function togglePlay() {
 function seek(i) {
   clearTimeout(timer);
   cur.i = Math.max(0, Math.min(i, cur.tokens.length - 1));
+  cur.i = curCluster().start; // land on a cluster boundary
   cur.done = false;
   if (cur.playing) tick();
   else showToken();
@@ -805,7 +839,7 @@ function finish() {
   $('pre').textContent = '';
   $('pivot').textContent = '✓';
   $('post').textContent = '';
-  $('word').classList.remove('code');
+  $('word').classList.remove('code', 'multi');
   $('bar').style.width = '100%';
   $('time-left').textContent = '0:00';
   $('play').textContent = '▶';
@@ -933,6 +967,7 @@ async function openItem(item, { start = true } = {}) {
     }
   });
   cur = { item, text, sections, tokens, anchors, i: 0, playedMs: 0, playing: false, done: false, sig: itemSig(item) };
+  computeClusters();
   if (item.progress > 5 && item.progress < tokens.length - 1) {
     cur.i = item.progress;
     toast('Resumed — ⟲ to restart');
@@ -993,6 +1028,8 @@ async function liveUpdateOpen(fresh) {
     }
   });
   cur.i = Math.min(cur.i, tokens.length - 1);
+  computeClusters();
+  cur.i = curCluster().start;
   $('item-title').textContent = fresh.title;
   buildSectionNav();
   buildTranscript();
@@ -1162,6 +1199,24 @@ function bumpWpm(d) {
   toast(settings.wpm + ' wpm target');
 }
 
+// Words per flash (1-4). Takes effect immediately, even mid-read.
+function setCluster(n) {
+  settings.cluster = Math.max(1, Math.min(4, Math.round(n) || 1));
+  saveSettings();
+  fillSettingsForm();
+  if (cur) {
+    computeClusters();
+    cur.i = curCluster().start;
+    if (!cur.playing && !cur.done) showToken();
+    updateHud();
+  }
+}
+
+$('cluster-now').onclick = () => {
+  setCluster(settings.cluster % 4 + 1);
+  toast('×' + settings.cluster + ' word' + (settings.cluster === 1 ? '' : 's') + ' per flash');
+};
+
 // Tap the HUD wpm value to type a target directly.
 $('wpm-now').onclick = () => {
   if (!cur || $('wpm-now').querySelector('input')) return;
@@ -1210,6 +1265,7 @@ document.addEventListener('keydown', (e) => {
   else if (e.key === 'ArrowUp') { e.preventDefault(); bumpWpm(10); }
   else if (e.key === 'ArrowDown') { e.preventDefault(); bumpWpm(-10); }
   else if (e.key === 't' || e.key === 'T') $('script-btn').click();
+  else if (e.key === 'c' || e.key === 'C') $('cluster-now').click();
 });
 
 // ---------- settings UI ----------
@@ -1221,6 +1277,8 @@ function fillSettingsForm() {
   $('s-bg').value = settings.bg;
   $('s-wpm').value = settings.wpm;
   $('s-wpm-num').value = settings.wpm;
+  $('s-cluster').value = settings.cluster;
+  $('s-cluster-val').textContent = settings.cluster;
   renderMode();
   fillBuild();
   $('s-autoplay').checked = settings.autoplay;
@@ -1271,6 +1329,7 @@ bind('s-color', 'color');
 bind('s-bg', 'bg');
 $('s-wpm').oninput = (e) => setWpm(Number(e.target.value));
 $('s-wpm-num').onchange = (e) => setWpm(Number(e.target.value));
+$('s-cluster').oninput = (e) => setCluster(Number(e.target.value));
 // Mode is a Standard/Build radio (circular indicators); Build reveals its two
 // sliders — wpm-per-interval and the interval (which live-updates the other's label).
 function renderMode() {

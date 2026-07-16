@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   tokenize, orpIndex, delayMultiplier, delayMs, buildWpm,
   remainingMs, prevSentenceStart, nextSentenceStart,
+  clusterize, clusterDelayMs,
 } from '../public/rsvp.js';
 
 test('tokenize marks sentence, clause, and paragraph boundaries', () => {
@@ -84,6 +85,55 @@ test('remainingMs sums per-token delays', () => {
   const t = tokenize('one two three');
   assert.equal(remainingMs(t, 0, 600), 500);
   assert.equal(remainingMs(t, 2, 600), 300);
+});
+
+test('clusterize size 1 is one cluster per token', () => {
+  const t = tokenize('one two three.');
+  const c = clusterize(t, 1);
+  assert.deepEqual(c.map((x) => x.w), ['one', 'two', 'three.']);
+  assert.deepEqual(c.map((x) => [x.start, x.end]), [[0, 0], [1, 1], [2, 2]]);
+});
+
+test('clusterize groups phrases, closing at clause and sentence ends', () => {
+  const t = tokenize('The quick brown fox jumps, then rests. Done now');
+  const c = clusterize(t, 3);
+  assert.deepEqual(c.map((x) => x.w), ['The quick brown', 'fox jumps,', 'then rests.', 'Done now']);
+});
+
+test('clusterize never spans a paragraph boundary', () => {
+  const t = tokenize('one two\n\nthree four');
+  const c = clusterize(t, 4);
+  assert.deepEqual(c.map((x) => x.w), ['one two', 'three four']);
+});
+
+test('clusterize never spans a section change', () => {
+  const t = tokenize('alpha beta gamma delta').map((x, i) => ({ ...x, sec: i < 2 ? 0 : 1 }));
+  const c = clusterize(t, 4);
+  assert.deepEqual(c.map((x) => x.w), ['alpha beta', 'gamma delta']);
+  assert.deepEqual(c.map((x) => x.sec), [0, 1]);
+});
+
+test('clusterize keeps links and code tokens solo', () => {
+  const t = tokenize('see https://x.io/p now please');
+  const c = clusterize(t, 3);
+  assert.deepEqual(c.map((x) => x.w), ['see', 'https://x.io/p', 'now please']);
+  assert.equal(c[1].link, true);
+  const code = [{ w: 'plain' }, { w: 'x=1', code: true }, { w: 'after' }, { w: 'that' }];
+  assert.deepEqual(clusterize(code, 3).map((x) => x.w), ['plain', 'x=1', 'after that']);
+});
+
+test('clusterize clamps size to 1-4', () => {
+  const t = tokenize('a b c d e f g h');
+  assert.equal(clusterize(t, 99)[0].w, 'a b c d');
+  assert.equal(clusterize(t, 0)[0].w, 'a');
+  assert.equal(clusterize(t, NaN)[0].w, 'a');
+});
+
+test('clusterDelayMs sums member delays so wpm stays honest', () => {
+  const t = tokenize('one two three four');
+  const c = clusterize(t, 4);
+  assert.equal(c.length, 1);
+  assert.equal(clusterDelayMs(t, c[0], 600), remainingMs(t, 0, 600));
 });
 
 test('sentence navigation', () => {

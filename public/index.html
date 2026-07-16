@@ -78,6 +78,7 @@
         <button id="fwd" class="icon-btn" title="Next sentence (→)">⟩</button>
         <button id="script-btn" class="icon-btn" title="Show/hide transcript (T)">¶</button>
         <span id="wpm-now" title="Tap to set target WPM"></span>
+        <span id="cluster-now" title="Words per flash (C) - tap to cycle"></span>
         <span id="time-left"></span>
       </div>
     </div>
@@ -105,6 +106,10 @@
         <input id="s-wpm-num" type="number" min="100" max="1000" step="10" class="num">
         <input id="s-wpm" type="range" min="100" max="1000" step="10">
       </label>
+      <label>Words per flash <b>×<span id="s-cluster-val">1</span></b>
+        <input id="s-cluster" type="range" min="1" max="4" step="1">
+      </label>
+      <p class="hint">Span training: flash 2-4 word phrases instead of single words. WPM stays true, so bigger clusters mean fewer, longer flashes.</p>
       <label>Mode</label>
       <div id="s-mode" class="seg">
         <button type="button" class="seg-opt" data-v="standard">Standard</button>
