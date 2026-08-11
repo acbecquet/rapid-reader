@@ -1,0 +1,29 @@
+name: Mirror PR to staging (test)
+
+# Each PR to main is force-pushed onto the `staging` branch, which Vercel serves
+# at test.acb-apps.com — so every PR is reviewable on test before it's merged to
+# main (prod). Only one PR is "on test" at a time: the most recently updated wins.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mirror-pr-to-staging
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    # same-repo PRs only — fork PRs get a read-only token and can't push
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Mirror PR head onto staging
+        run: git push --force origin HEAD:refs/heads/staging
