@@ -146,6 +146,9 @@ an agent session — it uses your `GEMINI_API_KEY`.
      resets — check **`/api/health`**, which reports `redis`/`blob`/`persistent`.
    - **Blob** (free) holds each item's full text (so a person can keep gigabytes
      without bloating the poll). Connecting it injects `BLOB_READ_WRITE_TOKEN`.
+     To find and remove blobs no item points at: `vercel env pull .env.local`,
+     then `node --env-file=.env.local scripts/prune-blobs.mjs` (dry run;
+     `--delete` removes the orphans, `--all` empties `bodies/` but keeps the list).
 3. In **Settings → Environment Variables**, add:
    - `RAPID_READER_TOKEN` — any long random string; this is your private key.
    - `TELEGRAM_WEBHOOK_SECRET`, `EMAIL_WEBHOOK_SECRET` *(optional)* — random
