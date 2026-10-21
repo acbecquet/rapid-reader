@@ -9,12 +9,6 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, basename, sep } from 'node:path';
 import { buildPayload, cwdOf } from './transcript.mjs';
-import { nativeTitle } from './native-title.mjs';
-
-// At most one native-title attempt per ~90s per sessionId, so a chatty session
-// (5s poll) doesn't spawn an LLM call every scan. Map sessionId → lastTitledMs.
-const TITLE_DEBOUNCE_MS = 90000;
-const lastTitled = new Map();
 
 function config() {
   let cfg = {};
@@ -78,14 +72,7 @@ async function syncFile(src, file, { url, token }) {
   });
   if (!payload) return false;
   payload.ts = ts; // real session time → newest sorts to the top
-  // Background-only: ask the native model (Claude/Codex) for a better title.
-  // Debounced per sessionId; any failure keeps the quick title. Never blocks.
-  const last = lastTitled.get(payload.sessionId) || 0;
-  if (Date.now() - last >= TITLE_DEBOUNCE_MS) {
-    lastTitled.set(payload.sessionId, Date.now());
-    const it = await nativeTitle({ sourceType: src.type, transcript: payload.text });
-    if (it) payload.title = it;
-  }
+  // Title is your most recent prompt (computed in buildPayload) — no LLM titling.
   try {
     await fetch(url + '/api/items', {
       method: 'POST',

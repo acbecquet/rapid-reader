@@ -10,21 +10,29 @@ const FENCE = /^\s*(?:```|~~~)/;
 const TABLE_ROW = /^\s*\|.*\|\s*$/;
 const TABLE_SEP = /^\s*\|?[\s:|-]+\|?\s*$/;
 const DIFF_LINE = /^(?:[+-](?![+-]).*|@@.*@@|diff --git|index [0-9a-f]+\.\.|[+-]{3} )/;
+// Agent-transcript turn markers ([[rr:you|claude|tool|think]]) emitted by
+// hooks/transcript.mjs. Whole-line match only, so prose/code never collide.
+const SENTINEL = /^\[\[rr:(you|claude|tool|think)\b[^\]]*\]\]\s*$/;
 
 // → [{ type: 'heading'|'paragraph'|'bullets'|'table'|'code', title?, text, raw }]
 export function parseStructure(text) {
   const lines = text.replace(/\r\n/g, '\n').split('\n');
   const sections = [];
   let para = [];
+  let role = null; // current speaker, set by [[rr:…]] sentinels (null = legacy/non-agent)
+  const pushSec = (sec) => { sec.role = role; sections.push(sec); };
 
   const flushPara = () => {
     const t = para.join(' ').trim();
-    if (t) sections.push({ type: 'paragraph', text: t, raw: para.join('\n') });
+    if (t) pushSec({ type: 'paragraph', text: t, raw: para.join('\n') });
     para = [];
   };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+
+    const sm = line.match(SENTINEL);
+    if (sm) { flushPara(); role = sm[1]; continue; } // turn marker: switch speaker, emit nothing
 
     if (FENCE.test(line)) {
       flushPara();
@@ -32,14 +40,14 @@ export function parseStructure(text) {
       while (i < lines.length && !FENCE.test(lines[i])) i++;
       const raw = lines.slice(start, i + 1).join('\n');
       const body = lines.slice(start + 1, i);
-      sections.push({ type: 'code', text: codePlaceholder(body), raw });
+      pushSec({ type: 'code', text: codePlaceholder(body), raw });
       continue;
     }
 
     if (HEADING.test(line)) {
       flushPara();
       const title = line.replace(HEADING, '').replace(/\s*#+\s*$/, '').trim();
-      sections.push({ type: 'heading', title, text: title, raw: line });
+      pushSec({ type: 'heading', title, text: title, raw: line });
       continue;
     }
 
@@ -48,7 +56,7 @@ export function parseStructure(text) {
       const start = i;
       while (i < lines.length && TABLE_ROW.test(lines[i])) i++;
       const rows = lines.slice(start, i--);
-      sections.push({ type: 'table', text: tableToSentences(rows), raw: rows.join('\n') });
+      pushSec({ type: 'table', text: tableToSentences(rows), raw: rows.join('\n') });
       continue;
     }
 
@@ -62,20 +70,20 @@ export function parseStructure(text) {
       }
       i--;
       const text = items.map((it) => (/[.?!:;]$/.test(it) ? it : it + '.')).join(' ');
-      sections.push({ type: 'bullets', text, raw: items.map((x) => '• ' + x).join('\n') });
+      pushSec({ type: 'bullets', text, raw: items.map((x) => '• ' + x).join('\n') });
       continue;
     }
 
-    // Blockquote → its own section. In an agent transcript these carry the
-    // user's own prompts (compileTranscript emits them as '> …'), which the
-    // reader renders as a right-aligned "You wrote:" turn.
+    // Blockquote → its own section. In a legacy agent transcript these carry the
+    // user's own prompts (old captures emit them as '> …'), which the reader
+    // renders as a right-aligned "You wrote:" turn.
     if (/^\s*>\s?/.test(line)) {
       flushPara();
       const buf = [];
       while (i < lines.length && /^\s*>\s?/.test(lines[i])) buf.push(lines[i++].replace(/^\s*>\s?/, '').trim());
       i--;
       const text = buf.join(' ').trim();
-      if (text) sections.push({ type: 'quote', text, raw: buf.map((x) => '> ' + x).join('\n') });
+      if (text) pushSec({ type: 'quote', text, raw: buf.map((x) => '> ' + x).join('\n') });
       continue;
     }
 
@@ -115,6 +123,7 @@ function tableToSentences(rows) {
 export function readingTokens(sections) {
   const tokens = [];
   sections.forEach((s, sec) => {
+    if (s.role === 'tool' || s.role === 'think') return; // collapsed turns, never RSVP'd
     if (s.type === 'code') {
       tokens.push({ w: s.text, sec, code: true, paraEnd: true, sentenceEnd: true });
       return;
@@ -138,4 +147,25 @@ export function isCodeHeavy(text) {
     .reduce((n, s) => n + s.raw.split(/\s+/).length, 0);
   const totalWords = text.split(/\s+/).length;
   return codeWords / totalWords > 0.6;
+}
+
+// Derive a clean, human title from a transcript body: the first real user turn
+// (or prose), skipping slash-command / markup / injected lines. Pure → testable.
+// Used to self-heal gibberish agent titles from older captures.
+// Derive a title from a transcript body: the user's MOST RECENT real prompt
+// (the last [[rr:you]] / '>' turn), skipping slash-command / markup / injected /
+// handoff / trim lines. Strictly your words — never Claude's. Pure → testable.
+export function deriveTitle(text) {
+  const isBad = (s) => !s || s.length < 2
+    || /^[<{[(]/.test(s)
+    || /^(#{1,6}\s|\*{1,2}\S|>\s|[-*]\s)/.test(s)
+    || /^[@"']*[A-Za-z]:[\\/]/.test(s)
+    || /^[#*\-–—.·•\s>]+$/.test(s)
+    || /environment_context|command-(name|message|args)|AGENTS\.md|system-reminder|resume_handoff|handoff document|earlier (conversation|turns) trimmed/i.test(s);
+  const secs = parseStructure(String(text || ''));
+  const yours = secs.filter((s) => (s.role === 'you' || s.type === 'quote') && !isBad(s.text));
+  const base = (yours[yours.length - 1]?.text || '').replace(/[*_`~]+/g, '').replace(/\s+/g, ' ').trim();
+  if (!base) return '';
+  const words = base.split(' ');
+  return words.slice(0, 10).join(' ').slice(0, 90) + (words.length > 10 ? '…' : '');
 }

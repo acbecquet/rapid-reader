@@ -33,6 +33,21 @@ export default async function handler(req, res) {
         sources: Array.isArray(c.sources) ? c.sources.map((s) => String(s).slice(0, 24)).slice(0, 20) : [],
       }));
     }
+    if (body.transcript && body.transcript.roles) {
+      const roles = {};
+      for (const r of ['you', 'claude', 'tool', 'think']) {
+        const v = body.transcript.roles[r] || {};
+        roles[r] = {
+          label: String(v.label || r).slice(0, 24),
+          align: ['left', 'right', 'center'].includes(v.align) ? v.align : 'left',
+          color: String(v.color || '').slice(0, 24),
+          box: !!v.box,
+          show: v.show !== false,
+          collapsed: v.collapsed !== false,
+        };
+      }
+      prefs.transcript = { roles };
+    }
     if ('geminiKey' in body) {
       const key = String(body.geminiKey || '').trim().slice(0, 200);
       if (key && !(await validateGeminiKey(key))) {
