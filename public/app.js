@@ -1078,12 +1078,14 @@ async function openItem(item, { start = true } = {}) {
   if (text === undefined) {
     try {
       ({ text } = await api('GET', 'items', { query: { id: item.id } }));
-      bodyCache.set(item.id, text);
     } catch (e) {
       logError('load-failed', e.message, item.id);
       toast('Could not load that item');
       return;
     }
+    // body deleted (storage pruned) or its blob is gone: the stub stays listed
+    if (!text) { toast('Text no longer available'); return; }
+    bodyCache.set(item.id, text);
   }
   // lazy AI self-heal (non-agent items only — agent sessions are titled by the
   // native model in the sync hook, not Gemini/MiniMax): only what you opened
@@ -1152,7 +1154,7 @@ async function liveUpdateOpen(fresh) {
   let text;
   try { ({ text } = await api('GET', 'items', { query: { id: fresh.id } })); }
   catch { return; }
-  if (!cur || cur.item.id !== fresh.id) return; // closed/switched while fetching
+  if (!text || !cur || cur.item.id !== fresh.id) return; // no body, or closed/switched while fetching
   bodyCache.set(fresh.id, text);
   let sections, tokens;
   try {

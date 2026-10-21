@@ -2,11 +2,11 @@
 // source endpoint (telegram, email, …) so they all gate, store the body in
 // Blob, and write the lean index identically.
 import crypto from 'node:crypto';
-import { getDoc, setDoc, putBody } from './store.js';
+import { getDoc, setDoc, putBody, delBody } from './store.js';
 import { keyFor } from './auth.js';
 import { mergePrefs } from './prefs.js';
 
-const CAP = 5000;
+export const CAP = 5000;
 
 export const SOURCE_TYPES = [
   'manual', 'web', 'claude_code', 'codex', 'copilot', 'docs', 'email',
@@ -48,6 +48,7 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
   if (sid) {
     const prev = items.find((it) => it.sessionId === sid);
     if (prev) {
+      const oldUrl = prev.bodyUrl;
       prev.bodyUrl = await putBody(uid, prev.id, text);
       prev.title = t;
       prev.words = w;
@@ -55,7 +56,11 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
       Object.assign(prev, bookFields);
       prev.createdAt = when; // bump recency so live updates sort to the top
       prev.readAt = bookId ? prev.readAt : null; // re-importing a book keeps your read state
-      await setDoc(KEY_U, [prev, ...items.filter((it) => it !== prev)].slice(0, CAP));
+      await saveIndex(uid, KEY_U, [prev, ...items.filter((it) => it !== prev)]);
+      // Every put is a new random-suffix blob, so drop the one it replaced.
+      // Never with a null oldUrl: that would delete the Redis body key the
+      // new text was just written to.
+      if (oldUrl && oldUrl !== prev.bodyUrl) await delBody(uid, prev.id, oldUrl);
       return { item: prev, updated: true };
     }
   }
@@ -67,6 +72,12 @@ export async function addItem(uid, { text, sourceType, title = '', url = '', wor
     createdAt: when, readAt: null, progress: 0, archivedAt: null,
     words: w, bodyUrl, ...(g ? { group: g } : {}), ...bookFields, ...(sid ? { sessionId: sid } : {}),
   };
-  await setDoc(KEY_U, [item, ...items].slice(0, CAP));
+  await saveIndex(uid, KEY_U, [item, ...items]);
   return { item };
+}
+
+// Write the index capped at CAP; items that fall off take their bodies along.
+async function saveIndex(uid, KEY_U, list) {
+  await setDoc(KEY_U, list.slice(0, CAP));
+  for (const it of list.slice(CAP)) await delBody(uid, it.id, it.bodyUrl);
 }

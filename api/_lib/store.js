@@ -8,6 +8,10 @@
 
 const memory = new Map();      // doc + body store fallback (dev only)
 let client;
+let blobSdk = () => import('@vercel/blob');
+
+// Tests only: swap the Vercel Blob SDK for a stub ({ put, del }).
+export function _setBlobSdk(sdk) { blobSdk = async () => sdk; }
 
 // Find an env var by regex (Vercel Marketplace integrations sometimes add a
 // store-name prefix, so we can't hard-code exact names). Returns the value.
@@ -20,7 +24,7 @@ function pickEnv(re, exclude) {
 
 // Upstash/Vercel KV REST credentials under any prefix (UPSTASH_REDIS_REST_URL,
 // KV_REST_API_URL, <PREFIX>_KV_REST_API_URL, …). REST only — @upstash/redis.
-function redisEnv() {
+export function redisEnv() {
   const url = pickEnv(/(^|_)(UPSTASH_REDIS|KV|REDIS)_REST(_API)?_URL$/i);
   const token = pickEnv(/(^|_)(UPSTASH_REDIS|KV|REDIS)_REST(_API)?_TOKEN$/i, /READ_ONLY/i);
   return url && token ? { url, token } : null;
@@ -28,7 +32,7 @@ function redisEnv() {
 
 // Vercel Blob read-write token under any prefix (BLOB_READ_WRITE_TOKEN,
 // <STORE>_READ_WRITE_TOKEN).
-function blobToken() {
+export function blobToken() {
   return pickEnv(/(^|_)BLOB_READ_WRITE_TOKEN$/i) || pickEnv(/_READ_WRITE_TOKEN$/i);
 }
 
@@ -96,7 +100,7 @@ const bodyKey = (uid, id) => `rr:body:${uid}:${id}`;
 
 export async function putBody(uid, id, text) {
   if (hasBlob()) {
-    const { put } = await import('@vercel/blob');
+    const { put } = await blobSdk();
     const { url } = await put(`bodies/${uid}/${id}.txt`, text, {
       access: 'public',
       addRandomSuffix: true,
@@ -117,10 +121,13 @@ export async function getBody(uid, id, bodyUrl) {
   return (await getDoc(bodyKey(uid, id), { t: '' })).t || '';
 }
 
+// A blob URL never falls through to the Redis key: that key may hold a
+// newer body for the same item (e.g. the Blob token was removed since).
 export async function delBody(uid, id, bodyUrl) {
-  if (bodyUrl && hasBlob()) {
+  if (bodyUrl) {
+    if (!hasBlob()) return;
     try {
-      const { del } = await import('@vercel/blob');
+      const { del } = await blobSdk();
       await del(bodyUrl, { token: blobToken() });
     } catch {}
     return;

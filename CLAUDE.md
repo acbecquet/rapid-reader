@@ -103,6 +103,10 @@ Hard-won, from a real mistake — do not repeat it:
   sessions carry `sessionId` + `group` (project); books are one item per
   chapter sharing a `bookId`/`group`, with a `bookmarkAt` marking the current
   chapter. Same `sessionId` upserts in place + bumps to top.
+- Every `putBody` creates a new blob (random suffix), so whatever replaces or
+  drops a body must `delBody` the old one: session upserts delete the blob
+  they replace, and items trimmed past the index cap take their bodies along.
+  `scripts/prune-blobs.mjs` reports/deletes orphans if one ever slips through.
 - Redis keys via `keyFor(base, uid)`: `rr:items[:uid]` lean index (cap 5000),
   `rr:prefs[:uid]` (capture gate + source toggles + columns + the user's own
   Gemini key, redacted out of every client response), `rr:stats[:uid]`
